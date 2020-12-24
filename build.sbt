@@ -18,8 +18,7 @@ lazy val organizationSettings = Seq(
   organization := "com.vyunsergey",
   name := "file-system-watcher",
   homepage := Some(url("https://github.com/VyunSergey")),
-  licenses := Seq(("Apache License, Version 2.0", url("http://www.apache.org/licenses/LICENSE-2.0.html"))),
-  idePackagePrefix := Some("com.vyunsergey.filesystemwatcher")
+  licenses := Seq(("Apache License, Version 2.0", url("http://www.apache.org/licenses/LICENSE-2.0.html")))
 )
 
 lazy val commonLibraryDependencies = Seq(
