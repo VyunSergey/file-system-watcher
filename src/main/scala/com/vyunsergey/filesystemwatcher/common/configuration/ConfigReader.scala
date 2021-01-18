@@ -22,7 +22,11 @@ object ConfigReader {
 
   def apply[F[_]]: ConfigReader[F] = new ConfigReader[F] {}
 
-  final case class Conf(path: Path)
+  final case class Conf(
+                         path: Path,
+                         fileMask: String,
+                         markerFileMask: String
+                       )
 
   val configPathDefault: Path = Paths.get(new File(getClass.getResource("/application.conf").toURI).toURI)
 

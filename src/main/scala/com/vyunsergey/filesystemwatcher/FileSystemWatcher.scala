@@ -7,7 +7,7 @@ import fs2.io.Watcher
 import fs2.io.Watcher.Event._
 import fs2.io.file.Files
 
-import java.nio.file.Path
+import java.nio.file.{Files => JFiles, Path, StandardCopyOption}
 import scala.util.Try
 
 trait FileSystemWatcher[F[_]] {
@@ -26,11 +26,19 @@ trait FileSystemWatcher[F[_]] {
       Files[F].size(registeredDirectory).map((event, _))
   }
 
+  def isFile(path: Path)(implicit AF: Async[F]): F[Boolean] =
+    AF.delay(java.nio.file.Files.isRegularFile(path))
+
   def fileSize(path: Path)(implicit AF: Async[F]): F[Long] =
     for {
-      isFile <- AF.delay(java.nio.file.Files.isRegularFile(path))
+      isFile <- isFile(path)
       size <- if (isFile) Try(Files[F].size(path)).toOption.getOrElse(0L.pure[F]) else 0L.pure[F]
     } yield size
+
+  def rename(file: Path, name: String)(implicit AF: Async[F]): F[Unit] =
+  for {
+    isFile <- isFile(file)
+  } yield if (isFile) AF.pure(JFiles.move(file, file.getParent.resolve(name), StandardCopyOption.REPLACE_EXISTING))
 }
 
 object FileSystemWatcher {
