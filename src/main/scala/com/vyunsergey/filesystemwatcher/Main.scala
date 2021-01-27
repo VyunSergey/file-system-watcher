@@ -1,7 +1,8 @@
 package com.vyunsergey.filesystemwatcher
 
-import cats.effect.{ExitCode, IO, IOApp}
+import cats.effect.{Async, ExitCode, IO, IOApp}
 import cats.implicits._
+import com.vyunsergey.filesystemwatcher.common.TransformerExecutor
 import com.vyunsergey.filesystemwatcher.common.arguments.ArgumentsReader
 import com.vyunsergey.filesystemwatcher.common.configuration.ConfigReader
 import fs2.io.Watcher.Event._
@@ -23,11 +24,25 @@ object Main extends IOApp {
       path <- arguments.path.toOption.map(ConfigReader[IO].convertPath).getOrElse(config.path.pure[IO])
       fileMask <- arguments.fileMask.toOption.getOrElse(config.fileMask).pure[IO]
       markerFileMask <- arguments.markerFileMask.toOption.getOrElse(config.markerFileMask).pure[IO]
+      transformerKeyValMode <- arguments.transformerKeyValMode.toOption.getOrElse(config.transformerKeyValMode).pure[IO]
+      transformerKeyValPath <- arguments.transformerKeyValPath.toOption.getOrElse(config.transformerKeyValPath).pure[IO]
+      transformerKeyValOptions <- arguments.transformerKeyValOptions.toOption.getOrElse(config.transformerKeyValOptions).pure[IO]
+      transformerKeyValExecCommand <- arguments.transformerKeyValExecCommand.toOption.getOrElse(config.transformerKeyValExecCommand).pure[IO]
       _ <- IO {
+        println(s"Watching path: '${path.toAbsolutePath.toString}'")
         println(s"File mask for data file: '$fileMask'")
         println(s"Marker file mask for marker file: '$markerFileMask'")
-        println(s"Watching path: '${path.toUri.getPath}'")
+        println(s"Transformer Key-Val mode: '$transformerKeyValMode'")
+        println(s"Transformer Key-Val path: '$transformerKeyValPath'")
+        println(s"Transformer Key-Val options: '$transformerKeyValOptions'")
+        println(s"Transformer Key-Val exec command: '$transformerKeyValExecCommand'")
       }
+      transformerCommand <- TransformerExecutor[IO].createExecutorCommand(
+        transformerKeyValMode,
+        transformerKeyValPath,
+        transformerKeyValOptions,
+        transformerKeyValExecCommand
+      )
       watcher = FileSystemWatcher[IO]
       stream <- watcher.watchWithFileSize(path)
       _ <- stream
@@ -40,13 +55,11 @@ object Main extends IOApp {
         case (Created(path: Path, _: Int), size) =>
           IO {
             println(s"Got Created path: '$path' with size: ${size / (1000.0 * 1000.0)}Mb")
-            process(path, fileMask, markerFileMask)
-          }
-        case (Modified(path: Path, _: Int), size) =>
-          IO {
-            println(s"Got Modified path: '$path' with size: ${size / (1000.0 * 1000.0)}Mb")
-            process(path, fileMask, markerFileMask)
-          }
+          } *> process[IO](path.getFileName.toString, path, fileMask, markerFileMask, transformerCommand)
+//        case (Modified(path: Path, _: Int), size) =>
+//          IO {
+//            println(s"Got Modified path: '$path' with size: ${size / (1000.0 * 1000.0)}Mb")
+//          } *> process[IO](path.getFileName.toString, path, fileMask, markerFileMask, transformerCommand)
         case _ => println("Waiting for events: Created, Modified").pure[IO]
       }.compile.drain
     } yield {
@@ -54,69 +67,84 @@ object Main extends IOApp {
     }
   }
 
-  def process(path: Path,
-              fileMask: String,
-              markerFileMask: String): Unit = {
-    val isExists = JFiles.exists(path)
-    val isFile: Boolean = JFiles.isRegularFile(path)
-    val fileName: String = path.getFileName.toString
-    val fileRegexp: Regex = fileMask.r
-    val markerFileRegexp: Regex = markerFileMask.r
-    val isDataFile: Boolean = fileName.matches(fileRegexp.regex)
-    val isMarkerFile: Boolean = fileName.matches(markerFileRegexp.regex)
+  def process[F[_]](name: String,
+                    path: Path,
+                    dataFileMask: String,
+                    markerFileMask: String,
+                    transformerCommand: String)(implicit AF: Async[F]): F[Unit] =
+    for {
+      _ <- println(s"Got File: '$name' in Path: '${path.toAbsolutePath.toString}'").pure[F]
+      (isExists, isFile) = (JFiles.exists(path), JFiles.isRegularFile(path))
+      (isMarkerFile, isDataFile) = (name.matches(markerFileMask.r.regex), name.matches(dataFileMask.r.regex))
+      _ <- AF.pure {
+        println(s"Path is ${if (isFile) "File" else "Directory"}")
+        println(s"Path exists: $isExists")
+        println(s"Path file name: '$name'")
+        println(s"Path file name '$name' is " +
+          s"${if (isMarkerFile) "Marker File" else if (isDataFile) "Data File" else "Other"}")
+      }
+      _ <- if (isExists && isMarkerFile) {
+        processMarkerFile[F](name, path, dataFileMask, markerFileMask, transformerCommand)
+        } else ().pure[F]
+    } yield ()
 
-    println(s"Path is ${if (isFile) "file" else "directory"}")
-    println(s"Path exists: $isExists")
-    println(s"Path file name: '$fileName'")
-    println(s"Path file name '$fileName' is data file: $isDataFile")
-    println(s"Path file name '$fileName' is marker file: $isMarkerFile")
+  def findPredicate[F[_]](regexp: Regex)(implicit AF: Async[F]): F[BiPredicate[Path, BasicFileAttributes]] =
+    new BiPredicate[Path, BasicFileAttributes] {
+      def test(t: Path, u: BasicFileAttributes): Boolean = {
+        val matches: Boolean = t.getFileName.toString.matches(regexp.regex)
 
-    if (isExists && isMarkerFile) {
-      println(s"Got marker file: '$fileName'")
+        println(s"  got path: '$t'")
+        println(s"  path is file: ${u.isRegularFile}")
+        println(s"  path matches regexp '${regexp.regex}': $matches")
 
-      def findPredicate(regexp: Regex): BiPredicate[Path, BasicFileAttributes] =
-        (t: Path, u: BasicFileAttributes) => {
-          val matches: Boolean = t.getFileName.toString.matches(regexp.regex)
+        matches && u.isRegularFile
+      }
+    }.pure[F]
 
-          println(s"  got path: '$t'")
-          println(s"  path is file: ${u.isRegularFile}")
-          println(s"  path matches regexp '${regexp.regex}': $matches")
+  def processMarkerFile[F[_]](name: String,
+                              path: Path,
+                              dataFileMask: String,
+                              markerFileMask: String,
+                              transformerCommand: String)(implicit AF: Async[F]): F[Unit] =
+    for {
+      _ <- println(s"Got Marker File: '$name' in Path: '${path.toAbsolutePath.toString}'").pure[F]
+      dataFileRegexp = (name.split("\\.").reverse.tail.reverse.mkString(".") + ".*").r
+      predicate <- findPredicate(dataFileRegexp)
+      dataPath = JFiles.find(path.getParent, 10, predicate).findFirst.get
+      (dataName, dataSize) = (dataPath.getFileName.toString, JFiles.size(dataPath))
+      (isExists, isFile) = (JFiles.exists(dataPath), JFiles.isRegularFile(dataPath))
+      (isMarkerFile, isDataFile) = (dataName.matches(markerFileMask.r.regex), dataName.matches(dataFileMask.r.regex))
+      _ <- AF.pure {
+        println(s"Find Data File: '$dataName' with Size: ${dataSize / (1000.0 * 1000.0)}Mb " +
+          s"in Path: '${dataPath.toAbsolutePath.toString}'")
+        println(s"Path is ${if (isFile) "File" else "Directory"}")
+        println(s"Path exists: $isExists")
+        println(s"Path file name: '$name'")
+        println(s"Path file name '$name' is " +
+          s"${if (isMarkerFile) "Marker File" else if (isDataFile) "Data File" else "Other"}")
+      }
+      _ <- if (isExists && isDataFile && dataSize > 0) {
+        processDataFile[F](dataName, dataPath, dataSize, transformerCommand)
+      } else ().pure[F]
+    } yield ()
 
-          matches && u.isRegularFile
-        }
-
-      val dataFileRegexp: Regex =
-        (fileName.split("\\.").reverse.tail.reverse.mkString(".") + ".*").r
-
-      val dataFile: Path =
-        JFiles.find(path.getParent, 10, findPredicate(dataFileRegexp)).findFirst.get
-
-      val dataFileName: String = dataFile.getFileName.toString
-
-      println(s"Find data file: '$dataFileName'")
-      println(s"Going to process data file")
-      processData(dataFile, JFiles.size(dataFile), fileMask)
-    }
-  }
-
-  def processData(path: Path, size: Long, fileMask: String): Unit = {
-    val isExists = JFiles.exists(path)
-    val isFile: Boolean = JFiles.isRegularFile(path)
-    val fileName: String = path.getFileName.toString
-    val fileRegexp: Regex = fileMask.r
-    val isDataFile: Boolean = fileName.matches(fileRegexp.regex)
-
-    println(s"Path is ${if (isFile) "file" else "directory"}")
-    println(s"Path exists: $isExists")
-    println(s"Path file name: '$fileName'")
-    println(s"Path file name '$fileName' is data file: $isDataFile")
-
-    if (isExists && isDataFile && size > 0) {
-      println(
+  def processDataFile[F[_]](name: String,
+                            path: Path,
+                            size: Long,
+                            transformerCommand: String)(implicit AF: Async[F]): F[Unit] =
+    for {
+      _ <- println(s"Got Data File: '$name' with Size: ${size / (1000.0 * 1000.0)}Mb " +
+        s"in Path: '${path.toAbsolutePath.toString}'").pure[F]
+      _ <- println(
         s"""#===============================================================#
-           |Running external Spark-App process for data file: '$fileName'"
+           |Running external Spark-App process for Data File: '$name'"
            |#===============================================================#
-           |""".stripMargin)
-    }
-  }
+           |""".stripMargin).pure[F]
+      _ <- TransformerExecutor[F].exec(
+        transformerCommand,
+        path.toAbsolutePath,
+        path.getParent.resolve("out").toAbsolutePath
+      )
+    } yield ()
+
 }

@@ -25,7 +25,11 @@ object ConfigReader {
   final case class Conf(
                          path: Path,
                          fileMask: String,
-                         markerFileMask: String
+                         markerFileMask: String,
+                         transformerKeyValMode: String,
+                         transformerKeyValPath: String,
+                         transformerKeyValOptions: String,
+                         transformerKeyValExecCommand: String
                        )
 
   val configPathDefault: Path = Paths.get(new File(getClass.getResource("/application.conf").toURI).toURI)
