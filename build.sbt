@@ -4,7 +4,7 @@ val catsVersion             = "2.2.0"
 val catsEffectVersion       = "2.3.0-M1"
 val fs2Version              = "3.0.0-M1"
 val fs2IoVersion            = "3.0.0-M1"
-val tofuVersion             = "0.8.0"
+val tofuVersion             = "0.9.0"
 val derevoVersion           = "0.11.5"
 val PureConfigVersion       = "0.12.0"
 val ScallopVersion          = "4.0.0"
@@ -36,6 +36,8 @@ lazy val commonLibraryDependencies = Seq(
   "org.rogach"                 %% "scallop"            % ScallopVersion,
   // Tofu
   "ru.tinkoff"                 %% "tofu"               % tofuVersion,
+  // Tofu Logging
+  "ru.tinkoff"                 %% "tofu-logging"       % tofuVersion,
   // Derevo
   "org.manatki"                %% "derevo-cats"        % derevoVersion,
   // KIND Projector
