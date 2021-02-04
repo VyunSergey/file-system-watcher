@@ -1,72 +1,46 @@
 package com.vyunsergey.filesystemwatcher
 
-import cats.effect.{Async, ExitCode, IO, IOApp}
-import cats.implicits._
-import com.vyunsergey.filesystemwatcher.common.TransformerExecutor
+import cats.effect.{Blocker, ExitCode, IO, IOApp, Resource}
+import tofu.logging.Logs
+import tofu.syntax.monadic._
 import com.vyunsergey.filesystemwatcher.common.arguments.ArgumentsReader
-import com.vyunsergey.filesystemwatcher.common.configuration.ConfigReader
-import fs2.io.Watcher.Event._
+import com.vyunsergey.filesystemwatcher.common.configuration.{Config, ConfigReader}
+import com.vyunsergey.filesystemwatcher.common.context.ContextReader
+import com.vyunsergey.filesystemwatcher.processor.file.{CsvFileProcessor, DataFileProcessor, FileProcessor, MarkerFileProcessor, ZipFileProcessor}
+import com.vyunsergey.filesystemwatcher.processor.event.EventProcessor
+import com.vyunsergey.filesystemwatcher.watcher.FileSystemWatcher
 
-import java.nio.file.attribute.BasicFileAttributes
-import java.nio.file.{Path, Files => JFiles}
-import java.util.function.BiPredicate
-import scala.util.matching.Regex
+import scala.concurrent.ExecutionContext
+
+import java.util.concurrent.ForkJoinPool
 
 object Main extends IOApp {
   def run(args: List[String]): IO[ExitCode] = {
-    for {
-      arguments <- ArgumentsReader[IO](args)
-      _ <- println(s"Arguments: ${arguments.args.mkString("['", "', '", "']")}").pure[IO]
-      configPath <- arguments.configPath.toOption.map(ConfigReader[IO].convertPath)
-        .getOrElse(ConfigReader.configPathDefault.pure[IO])
-      config <- ConfigReader[IO].read(configPath)
-      _ <- println(s"Configuration: $config").pure[IO]
-      path <- arguments.path.toOption.map(ConfigReader[IO].convertPath).getOrElse(config.path.pure[IO])
-      fileMask <- arguments.fileMask.toOption.getOrElse(config.fileMask).pure[IO]
-      markerFileMask <- arguments.markerFileMask.toOption.getOrElse(config.markerFileMask).pure[IO]
-      transformerKeyValMode <- arguments.transformerKeyValMode.toOption.getOrElse(config.transformerKeyValMode).pure[IO]
-      transformerKeyValPath <- arguments.transformerKeyValPath.toOption.getOrElse(config.transformerKeyValPath).pure[IO]
-      transformerKeyValOptions <- arguments.transformerKeyValOptions.toOption.getOrElse(config.transformerKeyValOptions).pure[IO]
-      transformerKeyValExecCommand <- arguments.transformerKeyValExecCommand.toOption.getOrElse(config.transformerKeyValExecCommand).pure[IO]
-      _ <- IO {
-        println(s"Watching path: '${path.toAbsolutePath.toString}'")
-        println(s"File mask for data file: '$fileMask'")
-        println(s"Marker file mask for marker file: '$markerFileMask'")
-        println(s"Transformer Key-Val mode: '$transformerKeyValMode'")
-        println(s"Transformer Key-Val path: '$transformerKeyValPath'")
-        println(s"Transformer Key-Val options: '$transformerKeyValOptions'")
-        println(s"Transformer Key-Val exec command: '$transformerKeyValExecCommand'")
-      }
-      transformerCommand <- TransformerExecutor[IO].createExecutorCommand(
-        transformerKeyValMode,
-        transformerKeyValPath,
-        transformerKeyValOptions,
-        transformerKeyValExecCommand
-      )
-      watcher = FileSystemWatcher[IO]
-      stream <- watcher.watchWithFileSize(path)
-      _ <- stream
-        .debug { case (event, size) =>
-          s"""#===============================================================#
-             |Event: $event with file size: ${size / (1000.0 * 1000.0)}Mb
-             |#===============================================================#
-             |""".stripMargin
-        }.evalMap {
-        case (Created(path: Path, _: Int), size) =>
-          IO {
-            println(s"Got Created path: '$path' with size: ${size / (1000.0 * 1000.0)}Mb")
-          } *> process[IO](path.getFileName.toString, path, fileMask, markerFileMask, transformerCommand)
-//        case (Modified(path: Path, _: Int), size) =>
-//          IO {
-//            println(s"Got Modified path: '$path' with size: ${size / (1000.0 * 1000.0)}Mb")
-//          } *> process[IO](path.getFileName.toString, path, fileMask, markerFileMask, transformerCommand)
-        case _ => println("Waiting for events: Created, Modified").pure[IO]
-      }.compile.drain
+    val syncLogs: Logs[IO, IO] = Logs.sync[IO, IO]
+    (for {
+      argumentsReader <- ArgumentsReader[IO](syncLogs)
+      arguments <- argumentsReader.read(args)
+      configReader <- ConfigReader[IO](syncLogs)
+      configPath = arguments.configPath.getOrElse(Config.pathDefault)
+      config <- configReader.read(configPath)
+      contextReader <- ContextReader[IO](syncLogs)
+      context <- contextReader.read(arguments, config)
+      executionContext = ExecutionContext.fromExecutor(new ForkJoinPool(8))
+      blocker = Blocker.liftExecutionContext(executionContext)
+      watcher <- FileSystemWatcher[IO](blocker, syncLogs)
+      implicit0(fileProcessor: FileProcessor[IO]) <- FileProcessor[IO](syncLogs)
+      implicit0(csvFileProcessor: CsvFileProcessor[IO]) <- CsvFileProcessor[IO](context, syncLogs)
+      implicit0(zipFileProcessor: ZipFileProcessor[IO]) <- ZipFileProcessor[IO](context, syncLogs)
+      implicit0(dataFileProcessor: DataFileProcessor[IO]) <- DataFileProcessor[IO](context, syncLogs)
+      implicit0(markerFileProcessor: MarkerFileProcessor[IO]) <- MarkerFileProcessor[IO](context, syncLogs)
+      eventProcessor <- EventProcessor[IO](syncLogs)
+      stream <- watcher.watch(context.config.path)
+      processedStream <- Resource.liftF(stream.evalMap(event => eventProcessor.process(event)).pure[IO])
     } yield {
-      ExitCode.Success
-    }
+      processedStream
+    }).use(_.compile.drain.as(ExitCode.Success))
   }
-
+/*
   def process[F[_]](name: String,
                     path: Path,
                     dataFileMask: String,
@@ -140,11 +114,11 @@ object Main extends IOApp {
            |Running external Spark-App process for Data File: '$name'"
            |#===============================================================#
            |""".stripMargin).pure[F]
-      _ <- TransformerExecutor[F].exec(
+      _ <- Executor[F].exec(
         transformerCommand,
         path.toAbsolutePath,
         path.getParent.resolve("out").toAbsolutePath
       )
     } yield ()
-
+*/
 }

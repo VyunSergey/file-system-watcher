@@ -1,38 +1,28 @@
 package com.vyunsergey.filesystemwatcher.common.configuration
 
-import java.io.File
-import java.nio.file.{Path, Paths}
-
 import cats.Monad
-import cats.implicits._
-import com.vyunsergey.filesystemwatcher.common.configuration.ConfigReader._
-import pureconfig.{ConfigConvert, ConfigSource}
+import tofu.logging._
+import tofu.syntax.logging._
+import tofu.syntax.monadic._
+import pureconfig.ConfigSource
+import cats.effect.Resource
 
-trait ConfigReader[F[_]] {
-  def read(path: Path)(implicit M: Monad[F]): F[Conf] = {
-    ConfigSource.file(path).loadOrThrow[Conf].pure[F]
-  }
-  def convertPath(pathName: String)(implicit M: Monad[F]): F[Path] = {
-    Paths.get(new File(pathName).toURI).pure[F]
+import java.nio.file.Path
+
+class ConfigReader[F[_]: Monad: Logging] {
+  def read(path: Path): Resource[F, Config] = {
+    for {
+      config <- Resource.liftF(
+        info"Reading Config" as {
+          ConfigSource.file(path).withFallback(ConfigSource.default).loadOrThrow[Config]
+        }
+      )
+      _ <- Resource.liftF(info"$config")
+    } yield config
   }
 }
 
 object ConfigReader {
-  import pureconfig.generic.semiauto.deriveConvert
-
-  def apply[F[_]]: ConfigReader[F] = new ConfigReader[F] {}
-
-  final case class Conf(
-                         path: Path,
-                         fileMask: String,
-                         markerFileMask: String,
-                         transformerKeyValMode: String,
-                         transformerKeyValPath: String,
-                         transformerKeyValOptions: String,
-                         transformerKeyValExecCommand: String
-                       )
-
-  val configPathDefault: Path = Paths.get(new File(getClass.getResource("/application.conf").toURI).toURI)
-
-  implicit val confConverter: ConfigConvert[Conf] = deriveConvert[Conf]
+  def apply[F[_]: Monad](logs: Logs[F, F]): Resource[F, ConfigReader[F]] =
+    Resource.liftF(logs.forService[ConfigReader[F]].map(implicit l => new ConfigReader[F]))
 }
