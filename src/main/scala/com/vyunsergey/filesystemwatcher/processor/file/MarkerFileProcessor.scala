@@ -44,7 +44,13 @@ class MarkerFileProcessor[F[_]: Monad: Logging: FileProcessor: DataFileProcessor
             (".*\\." + fileName.split("\\.").last).r
           }
           _ <- info"Finding Path of Data File in Path: '${path.getParent.toAbsolutePath.toString}'"
-          subPathOp <- fileProcessor.find(path.getParent, Some(dataFileMatchRegex), Some(dataFileMismatchRegex))
+          subPathOp <- fileProcessor.find(
+            path.getParent,
+            _.getFileName.toString,
+            _.isRegularFile,
+            Some(dataFileMatchRegex),
+            Some(dataFileMismatchRegex)
+          )
           _ <- if (subPathOp.nonEmpty) {
             for {
               subPath <- subPathOp.get.pure[F]

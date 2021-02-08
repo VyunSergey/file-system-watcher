@@ -10,6 +10,7 @@ import java.nio.file.{Path, Paths}
 
 final case class Config(
                          path: Path,
+                         productMask: String,
                          fileMask: Map[String, Config.FileMask],
                          transformer: Config.Transformer
                        )
@@ -59,12 +60,14 @@ object Config {
   implicit val configLoggable: DictLoggable[Config] = new DictLoggable[Config] {
     override def fields[I, V, R, S](a: Config, i: I)(implicit r: LogRenderer[I, V, R, S]): R = {
       r.addString("path", a.path.toAbsolutePath.toString, i) |+|
+        r.addString("productMask", a.productMask, i) |+|
         r.addString("fileMask", a.fileMask.view.mapValues(fileMaskLoggable.logShow).mkString("[", ",", "]"), i) |+|
         r.addString("transformer", transformerLoggable.logShow(a.transformer), i)
     }
 
     override def logShow(a: Config): String =
       s"Config(path = '${a.path.toAbsolutePath.toString}'" +
+        s", productMask = '${a.productMask}'" +
         s", fileMask = '${a.fileMask.view.mapValues(fileMaskLoggable.logShow).mkString("[", ",", "]")}'" +
         s", transformer = '${transformerLoggable.logShow(a.transformer)}')"
   }
