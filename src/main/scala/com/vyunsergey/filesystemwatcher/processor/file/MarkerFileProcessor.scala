@@ -21,14 +21,14 @@ class MarkerFileProcessor[F[_]: Monad: Logging: FileProcessor: DataFileProcessor
         case Success(v) => v.pure[F]
         case Failure(exp) =>
           for {
-            _ <- error"Cant get 'csv' files mask from Config: $config form Path: '${configPath.toAbsolutePath.toString}'. ${exp.getMessage}"
+            _ <- error"Can`t get 'csv' files mask from Config: $config form Path: '${configPath.toAbsolutePath.toString}'. ${exp.getClass.getName}: ${exp.getMessage}"
           } yield throw exp
       }
       zipFileMasks <- Try(config.fileMask("zip")) match {
         case Success(v) => v.pure[F]
         case Failure(exp) =>
           for {
-            _ <- error"Cant get 'zip' files mask from Config: $config form Path: '${configPath.toAbsolutePath.toString}'. ${exp.getMessage}"
+            _ <- error"Can`t get 'zip' files mask from Config: $config form Path: '${configPath.toAbsolutePath.toString}'. ${exp.getClass.getName}: ${exp.getMessage}"
           } yield throw exp
       }
       fileName = path.getFileName.toString
@@ -54,7 +54,7 @@ class MarkerFileProcessor[F[_]: Monad: Logging: FileProcessor: DataFileProcessor
           _ <- if (subPathOp.nonEmpty) {
             for {
               subPath <- subPathOp.get.pure[F]
-              _ <- info"Find Data File with Path: '${subPath.toAbsolutePath.toString}'"
+              _ <- info"Finding Data File with Path: '${subPath.toAbsolutePath.toString}'"
               dataFileProcessor <- info"Going process Data File in Path: '${subPath.toAbsolutePath.toString}'" as {
                 implicitly[DataFileProcessor[F]]
               }

@@ -13,10 +13,7 @@ class ContextReader[F[_]: Monad: Logging] {
     for {
       context <- Resource.liftF(
         info"Reading Context" as {
-          Context(
-            arguments.configPath.getOrElse(Config.pathDefault),
-            config
-          )
+          Context(arguments.configPath.getOrElse(Config.defaultPath), config)
         }
       )
       _ <- Resource.liftF(info"$context")

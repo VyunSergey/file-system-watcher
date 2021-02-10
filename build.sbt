@@ -2,6 +2,7 @@ lazy val scalaVersion2_13   = "2.13.4"
 scalaVersion := scalaVersion2_13
 val catsVersion             = "2.3.1"
 val catsEffectVersion       = "2.3.1"
+val circeVersion            = "0.13.0"
 val fs2Version              = "2.5.0"
 val fs2IoVersion            = "2.5.0"
 val tofuVersion             = "0.9.0"
@@ -25,6 +26,12 @@ lazy val commonLibraryDependencies = Seq(
   "org.typelevel"              %% "cats-core"               % catsVersion,
   // Cats-effect
   "org.typelevel"              %% "cats-effect"             % catsEffectVersion,
+  // Circe-core
+  "io.circe"                   %% "circe-core"              % circeVersion,
+  // Circe-generic
+  "io.circe"                   %% "circe-generic"           % circeVersion,
+  // Circe-parser
+  "io.circe"                   %% "circe-parser"            % circeVersion,
   // FS2-core
   "co.fs2"                     %% "fs2-core"                % fs2Version,
   // FS2-io

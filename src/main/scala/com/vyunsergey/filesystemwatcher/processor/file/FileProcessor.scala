@@ -6,6 +6,7 @@ import tofu.logging._
 import tofu.syntax.logging._
 import tofu.syntax.monadic._
 
+import java.io.{BufferedReader, InputStreamReader}
 import java.nio.file.attribute.BasicFileAttributes
 import java.nio.file.{Files, Path}
 import java.util.function.BiPredicate
@@ -28,6 +29,25 @@ class FileProcessor[F[_]: Monad: Logging] {
         warn"$entity: '${path.toAbsolutePath.toString}' does not exists, Skipping"
       }
     } yield ()
+
+  def readFile(path: Path): F[Option[String]] = {
+    Try {
+      val br = new BufferedReader(new InputStreamReader(Files.newInputStream(path)))
+      try {
+        val sb = new StringBuilder
+        var line = br.readLine
+
+        while (line != null) {
+          sb.append(line)
+          sb.append(System.lineSeparator)
+          line = br.readLine
+        }
+        sb.toString
+      } finally {
+        br.close()
+      }
+    }.toOption.pure[F]
+  }
 
   def find(path: Path,
            operation: Path => String,

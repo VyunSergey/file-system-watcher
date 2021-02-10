@@ -21,14 +21,14 @@ class DataFileProcessor[F[_]: Monad: Logging: FileProcessor: CsvFileProcessor: Z
         case Success(v) => v.pure[F]
         case Failure(exp) =>
           for {
-            _ <- error"Cant get 'csv' files mask from Config: $config form Path: '${configPath.toAbsolutePath.toString}'. ${exp.getMessage}"
+            _ <- error"Can`t get 'csv' files mask from Config: $config form Path: '${configPath.toAbsolutePath.toString}'. ${exp.getClass.getName}: ${exp.getMessage}"
           } yield throw exp
       }
       zipFileMasks <- Try(config.fileMask("zip")) match {
         case Success(v) => v.pure[F]
         case Failure(exp) =>
           for {
-            _ <- error"Cant get 'zip' files mask from Config: $config form Path: '${configPath.toAbsolutePath.toString}'. ${exp.getMessage}"
+            _ <- error"Can`t get 'zip' files mask from Config: $config form Path: '${configPath.toAbsolutePath.toString}'. ${exp.getClass.getName}: ${exp.getMessage}"
           } yield throw exp
       }
       fileName = path.getFileName.toString

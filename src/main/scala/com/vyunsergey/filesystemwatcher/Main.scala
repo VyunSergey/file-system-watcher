@@ -6,7 +6,7 @@ import tofu.syntax.monadic._
 import com.vyunsergey.filesystemwatcher.common.arguments.ArgumentsReader
 import com.vyunsergey.filesystemwatcher.common.configuration.{Config, ConfigReader}
 import com.vyunsergey.filesystemwatcher.common.context.ContextReader
-import com.vyunsergey.filesystemwatcher.common.transform.Transformer
+import com.vyunsergey.filesystemwatcher.common.transform.{Transformer, TransformerConfigReader}
 import com.vyunsergey.filesystemwatcher.processor.file.{CsvFileProcessor, DataFileProcessor, FileProcessor, MarkerFileProcessor, ZipFileProcessor}
 import com.vyunsergey.filesystemwatcher.processor.event.EventProcessor
 import com.vyunsergey.filesystemwatcher.watcher.FileSystemWatcher
@@ -21,15 +21,16 @@ object Main extends IOApp {
       argumentsReader <- ArgumentsReader[IO](syncLogs)
       arguments <- argumentsReader.read(args)
       configReader <- ConfigReader[IO](syncLogs)
-      configPath = arguments.configPath.getOrElse(Config.pathDefault)
+      configPath = arguments.configPath.getOrElse(Config.defaultPath)
       config <- configReader.read(configPath)
       contextReader <- ContextReader[IO](syncLogs)
       context <- contextReader.read(arguments, config)
       executionContext = ExecutionContext.fromExecutor(new ForkJoinPool(8))
       blocker = Blocker.liftExecutionContext(executionContext)
       watcher <- FileSystemWatcher[IO](blocker, syncLogs)
-      implicit0(transformer: Transformer[IO]) <- Transformer[IO](syncLogs)
       implicit0(fileProcessor: FileProcessor[IO]) <- FileProcessor[IO](syncLogs)
+      implicit0(transformerConfigReader: TransformerConfigReader[IO]) <- TransformerConfigReader[IO](context, syncLogs)
+      implicit0(transformer: Transformer[IO]) <- Transformer[IO](context, syncLogs)
       implicit0(csvFileProcessor: CsvFileProcessor[IO]) <- CsvFileProcessor[IO](context, syncLogs)
       implicit0(zipFileProcessor: ZipFileProcessor[IO]) <- ZipFileProcessor[IO](context, syncLogs)
       implicit0(dataFileProcessor: DataFileProcessor[IO]) <- DataFileProcessor[IO](context, syncLogs)

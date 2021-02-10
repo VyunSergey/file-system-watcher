@@ -2,7 +2,6 @@ package com.vyunsergey.filesystemwatcher.processor.file
 
 import cats.Monad
 import cats.effect.Resource
-import cats.syntax.traverse._
 import com.vyunsergey.filesystemwatcher.common.context.Context
 import com.vyunsergey.filesystemwatcher.common.transform.Transformer
 import tofu.logging._
@@ -10,7 +9,6 @@ import tofu.syntax.logging._
 import tofu.syntax.monadic._
 
 import java.nio.file.Path
-import scala.util.{Failure, Success, Try}
 
 class CsvFileProcessor[F[_]: Monad: Logging: FileProcessor: Transformer](context: Context) {
   def processCsvFile(path: Path): F[Unit] =
@@ -18,42 +16,32 @@ class CsvFileProcessor[F[_]: Monad: Logging: FileProcessor: Transformer](context
 
   def processFile(path: Path): F[Unit] = {
     for {
-      (config, configPath) <- (context.config, context.configPath).pure[F]
-      productRegexps <- info"Getting .csv options for Products" as {
-        config.transformer.options.keys.toList.map { key =>
-          (key, config.productMask.replaceFirst("<PRODUCT_ID>", key).r)
-        }
+      (config, fileProcessor) <- info"Finding productId for Path: '${path.toAbsolutePath.toString}'" as {
+        (context.config, implicitly[FileProcessor[F]])
       }
-      fileProcessor <- info"Finding .csv options for Path: '${path.toAbsolutePath.toString}'" as {
-        implicitly[FileProcessor[F]]
-      }
-      keyPathOp <- productRegexps.traverse { case (key, regex) =>
-        fileProcessor.find(
-          path,
-          _.toAbsolutePath.toString.replace("\\", "/"),
-          _.isRegularFile,
-          Some(regex)).map((key, _)
-        )
-      }.map(_.find(_._2.isDefined))
-      _ <- keyPathOp match {
-        case None => error"Cant find .csv options for Path: '${path.toAbsolutePath.toString}' from Config: $config form Path: '${configPath.toAbsolutePath.toString}'"
-        case Some((key, _)) =>
+      configPathOp <- fileProcessor.findParent(path, _.toAbsolutePath.toString.replace("\\", "/"), Some(config.productMask.r))
+      _ <- configPathOp match {
+        case None => error"Can`t find productId for Path: '${path.toAbsolutePath.toString}' with Mask: '${config.productMask}'"
+        case Some(configPath) =>
           for {
-            _ <- Try(config.transformer.options(key)) match {
-              case Failure(exp) => error"Cant get '$key' transformer options from Config: $config form Path: '${configPath.toAbsolutePath.toString}'. ${exp.getMessage}"
-              case Success(options) =>
+            transformer <- info"Creating Transformer" as implicitly[Transformer[F]]
+            productId = configPath.getFileName.toString
+            transformerConfigOp <- transformer.createConfig(productId)
+            _ <- transformerConfigOp match {
+              case None => error"Can`t create Transformer Config from Path: '${path.toAbsolutePath.toString}'"
+              case Some(transformerConfig) =>
                 for {
-                  transformer <- info"Creating Transformer" as implicitly[Transformer[F]]
                   transformerCommand <- transformer.createCommand(
                     config.transformer.mode,
                     config.transformer.jarPath,
-                    options.mkString(" "),
+                    transformerConfig,
                     config.transformer.command
                   )
+                  _ <- info"Finding Input Directory from Path: '${path.toAbsolutePath.toString}'"
+                  inputPath <- fileProcessor.findParent(path, _.getFileName.toString, Some("in".r))
+                  targetPath = inputPath.getOrElse(path).getParent.resolve("out")
                   _ <- info"Executing Transformer Command: $transformerCommand"
-                  targetPath <- fileProcessor.findParent(path, _.getFileName.toString, Some("in".r))
-                  _ <- info"Find Parent Path: '${targetPath.map(_.toAbsolutePath.toString)}'"
-                  _ <- transformer.exec(transformerCommand, path, targetPath.getOrElse(path).getParent.resolve("out"))
+                  _ <- transformer.exec(transformerCommand, path, targetPath)
                 } yield ()
             }
           } yield ()
