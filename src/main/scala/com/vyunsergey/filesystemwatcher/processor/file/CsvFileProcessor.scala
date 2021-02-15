@@ -42,7 +42,7 @@ class CsvFileProcessor[F[_]: Monad: Logging: FileProcessor: Transformer](context
             subPaths <- fileProcessor.getSubPaths(tempPath)
             notDataFiles = subPaths.filter(!_.getFileName.toString.matches(csvFileMasks.dataFile))
             _ <- info"Deleting Not Data Files: ${notDataFiles.map(_.getFileName.toString).mkString("[", ",", "]")} from Path: '${tempPath.toAbsolutePath.toString}'"
-            _ <- notDataFiles.traverse(fileProcessor.deleteFile)
+            _ <- notDataFiles.traverse(fileProcessor.deleteFiles)
             transformer <- info"Creating Transformer" as implicitly[Transformer[F]]
             productId = configPath.getFileName.toString
             transformerConfigOp <- transformer.createConfig(productId)
@@ -59,7 +59,7 @@ class CsvFileProcessor[F[_]: Monad: Logging: FileProcessor: Transformer](context
                   _ <- info"Creating Source Directory from Path: '${path.toAbsolutePath.toString}'"
                   sourceName = s"${productId}__$fileName"
                   sourcePath = tempPath.getParent.resolve(sourceName)
-                  _ <- fileProcessor.deleteFile(sourcePath)
+                  _ <- fileProcessor.deleteFiles(sourcePath)
                   _ <- fileProcessor.renameFile(tempPath, sourceName)
                   _ <- info"Creating Target Directory from Path: '${path.toAbsolutePath.toString}'"
                   targetPath = inputPath.getParent.resolve("out")

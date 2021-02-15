@@ -12,8 +12,8 @@ import tofu.syntax.monadic._
 
 import java.io.{BufferedReader, InputStreamReader}
 import java.nio.file.attribute.BasicFileAttributes
-import java.nio.file.{Files, Path, StandardCopyOption}
-import java.util.Comparator
+import java.nio.file.{Path, StandardCopyOption, Files => JFiles}
+import java.util.{Comparator, Optional}
 import java.util.function.BiPredicate
 import scala.annotation.tailrec
 import scala.jdk.CollectionConverters._
@@ -23,11 +23,12 @@ import scala.util.matching.Regex
 class FileProcessor[F[_]: Monad: Logging] {
   def process(path: Path)(operation: Path => F[Unit]): F[Unit] =
     for {
-      isExist <- Files.exists(path).pure[F]
-      isFile <- Files.isRegularFile(path).pure[F]
+      isExist <- isExist(path)
+      isFile <- isFile(path)
+      size <- fileSize(path)
+      sizeMb = size / (1024.0 * 1024.0)
       entity = if (isFile) s"File" else "Directory"
-      size = if (isExist) Files.size(path) else 0L
-      p <- info"Received $entity: '${path.toAbsolutePath.toString}' with Size ${size / (1000.0 * 1000.0)}Mb" as path
+      p <- info"Received $entity: '${path.toAbsolutePath.toString}' with Size ${sizeMb}Mb" as path
       _ <- if (isExist) {
         if (isFile) operation(p)
         else info"Waiting Files, Skipping $entity: '${path.toAbsolutePath.toString}'"
@@ -40,9 +41,21 @@ class FileProcessor[F[_]: Monad: Logging] {
     name.split("\\.").reverse.tail.reverse.mkString(".").pure[F]
   }
 
+  def isExist(path: Path): F[Boolean] =
+    Try(JFiles.exists(path)).getOrElse(false).pure[F]
+
+  def isFile(path: Path): F[Boolean] =
+    Try(JFiles.isRegularFile(path)).getOrElse(false).pure[F]
+
+  def isDirectory(path: Path): F[Boolean] =
+    Try(JFiles.isDirectory(path)).getOrElse(false).pure[F]
+
+  def fileSize(path: Path): F[Long] =
+    Try(JFiles.size(path)).getOrElse(0L).pure[F]
+
   def readFile(path: Path, sep: String = System.lineSeparator): F[Option[String]] = {
     Try {
-      val br = new BufferedReader(new InputStreamReader(Files.newInputStream(path)))
+      val br = new BufferedReader(new InputStreamReader(JFiles.newInputStream(path)))
       try {
         val sb = new StringBuilder
         var line = br.readLine
@@ -62,7 +75,7 @@ class FileProcessor[F[_]: Monad: Logging] {
   def moveFile(srcPath: Path, tgtPath: Path): F[Unit] = {
     for {
       _ <- debug"Moving data from Source Path: '${srcPath.toAbsolutePath.toString}' to Target Path: '${tgtPath.toAbsolutePath.toString}' with copy option: ${StandardCopyOption.REPLACE_EXISTING.toString}" as {
-        Files.move(srcPath, tgtPath, StandardCopyOption.REPLACE_EXISTING)
+        Try(JFiles.move(srcPath, tgtPath, StandardCopyOption.REPLACE_EXISTING)).getOrElse(srcPath)
       }
       _ <- debug"Finish moving data from Source Path: '${srcPath.toAbsolutePath.toString}' to Target Path: '${tgtPath.toAbsolutePath.toString}'"
     } yield ()
@@ -70,9 +83,12 @@ class FileProcessor[F[_]: Monad: Logging] {
 
   def copyFile(srcPath: Path, tgtPath: Path): F[Unit] = {
     for {
+      isParentExist <- isExist(tgtPath.getParent)
+      _ <- if (!isParentExist) debug"Creating Parent Target Path: '${tgtPath.getParent.toAbsolutePath.toString}'" as {
+        Try(JFiles.createDirectories(tgtPath.getParent)).getOrElse(srcPath)
+      } else ().pure[F]
       _ <- debug"Copping data from Source Path: '${srcPath.toAbsolutePath.toString}' to Target Path: '${tgtPath.toAbsolutePath.toString}' with copy option: ${StandardCopyOption.REPLACE_EXISTING.toString}" as {
-        if (!Files.exists(tgtPath.getParent)) Files.createDirectories(tgtPath.getParent)
-        Files.copy(srcPath, tgtPath, StandardCopyOption.REPLACE_EXISTING)
+        Try(JFiles.copy(srcPath, tgtPath, StandardCopyOption.REPLACE_EXISTING)).getOrElse(srcPath)
       }
       _ <- debug"Finish copping data from Source Path: '${srcPath.toAbsolutePath.toString}' to Target Path: '${tgtPath.toAbsolutePath.toString}'"
     } yield ()
@@ -86,7 +102,8 @@ class FileProcessor[F[_]: Monad: Logging] {
           _ <- deleteFile(tgtPath)
         } yield ()
       } else ().pure[F]
-      _ <- if (Files.isDirectory(srcPath)) {
+      isDirectory <- isDirectory(srcPath)
+      _ <- if (isDirectory) {
         for {
           subPaths <- getSubPaths(srcPath)
           _ <- debug"Source Path: '${srcPath.toAbsolutePath.toString}' is Directory with sub paths: ${subPaths.map(_.getFileName.toString).mkString("[", ",", "]")}"
@@ -112,12 +129,24 @@ class FileProcessor[F[_]: Monad: Logging] {
 
   def deleteFile(path: Path): F[Unit] = {
     for {
-      _ <- debug"Deleting file '${path.getFileName.toString}' from Path: '${path.toAbsolutePath.toString}'" as {
-        if (Files.exists(path)) {
-          Files.walk(path).sorted(Comparator.reverseOrder[Path]()).forEach(path => Files.deleteIfExists(path))
-        }
-      }
+      _ <- debug"Deleting file '${path.getFileName.toString}' from Path: '${path.toAbsolutePath.toString}'"
+      _ <- Try(JFiles.deleteIfExists(path)).getOrElse(false).pure[F]
       _ <- debug"Finish deleting file '${path.getFileName.toString}' from Path: '${path.toAbsolutePath.toString}'"
+    } yield ()
+  }
+
+  def deleteFiles(path: Path): F[Unit] = {
+    for {
+      _ <- debug"Deleting all files from Path: '${path.toAbsolutePath.toString}'"
+      isExist <- isExist(path)
+      _ <- if (isExist) {
+        for {
+          subPathsReversed <- Try(JFiles.walk(path).sorted(Comparator.reverseOrder[Path]()).iterator().asScala.toList)
+            .getOrElse(List.empty[Path]).pure[F]
+          _ <- subPathsReversed.traverse(deleteFile)
+        } yield ()
+      } else ().pure[F]
+      _ <- debug"Finish deleting all files from Path: '${path.toAbsolutePath.toString}'"
     } yield ()
   }
 
@@ -133,13 +162,12 @@ class FileProcessor[F[_]: Monad: Logging] {
   def zipFilesDivided(paths: List[Path], zipPath: Path,
                       size: Long = 100 * 1024 * 1024): F[Unit] = {
     for {
-      zipParameters <- debug"Creating zip parameters" as {
-        new ZipParameters()
-      }
-      _ <- debug"Zipping files: ${paths.map(_.toFile.getName)} to archive '${zipPath.getFileName.toString}' divided by size ${size / 1024 / 1024}Mb" as {
+      zipParameters <- debug"Creating zip parameters" as new ZipParameters()
+      sizeMb = size / (1024.0 * 1024.0)
+      _ <- debug"Zipping files: ${paths.map(_.toFile.getName)} to archive '${zipPath.getFileName.toString}' divided by size ${sizeMb}Mb" as {
         new ZipFile(zipPath.toFile).createSplitZipFile(paths.map(_.toFile).asJava, zipParameters, true, size)
       }
-      _ <- debug"Finish zipping files: ${paths.map(_.toFile.getName)} to archive '${zipPath.getFileName.toString}' divided by size ${size / 1024 / 1024}Mb"
+      _ <- debug"Finish zipping files: ${paths.map(_.toFile.getName)} to archive '${zipPath.getFileName.toString}' divided by size ${sizeMb}Mb"
     } yield ()
   }
 
@@ -161,10 +189,11 @@ class FileProcessor[F[_]: Monad: Logging] {
         zipParams.setEncryptionMethod(EncryptionMethod.ZIP_STANDARD)
         zipParams
       }
-      _ <- debug"Zipping files: ${paths.map(_.toFile.getName)} to protected archive '${zipPath.getFileName.toString}' with password: '$password' divided by size ${size / 1024 / 1024}Mb" as {
+      sizeMb = size / (1024.0 * 1024.0)
+      _ <- debug"Zipping files: ${paths.map(_.toFile.getName)} to protected archive '${zipPath.getFileName.toString}' with password: '$password' divided by size ${sizeMb}Mb" as {
         new ZipFile(zipPath.toFile, password.toCharArray).createSplitZipFile(paths.map(_.toFile).asJava, zipParameters, true, size)
       }
-      _ <- debug"Finish zipping files: ${paths.map(_.toFile.getName)} to protected archive '${zipPath.getFileName.toString}' with password: '$password' divided by size ${size / 1024 / 1024}Mb"
+      _ <- debug"Finish zipping files: ${paths.map(_.toFile.getName)} to protected archive '${zipPath.getFileName.toString}' with password: '$password' divided by size ${sizeMb}Mb"
     } yield ()
   }
 
@@ -186,10 +215,10 @@ class FileProcessor[F[_]: Monad: Logging] {
     } yield ()
   }
 
-  def getSubPaths(path: Path, maxDepth: Int = 10): F[List[Path]] = {
+  def getSubPaths(path: Path): F[List[Path]] = {
     for {
       subPaths <- debug"Getting All sub paths of Path: ${path.toAbsolutePath.toString}" as {
-        Files.walk(path, maxDepth).filter(!_.equals(path)).iterator().asScala.toList
+        Try(JFiles.walk(path).filter(!_.equals(path)).iterator().asScala.toList).getOrElse(List.empty[Path])
       }
       _ <- debug"Finish got sub paths: '${subPaths.map(_.toAbsolutePath.toString)}'"
     } yield subPaths
@@ -211,8 +240,8 @@ class FileProcessor[F[_]: Monad: Logging] {
           }
         }
       }
-      resultPathJOp <- info"Finding first subPath in Path: '${path.toAbsolutePath.toString}' with regex: (match = '${matchRegexp.map(_.regex)}', mismatch = '${mismatchRegexp.map(_.regex)}')" as {
-        Files.find(path, maxDepth, predicate).findFirst
+      resultPathJOp <- debug"Finding first subPath in Path: '${path.toAbsolutePath.toString}' with regex: (match = '${matchRegexp.map(_.regex)}', mismatch = '${mismatchRegexp.map(_.regex)}')" as {
+        Try(JFiles.find(path, maxDepth, predicate).findFirst).getOrElse(Optional.empty[Path]())
       }
       resultPathOp <- debug"Converting Java Optional to Scala Option" as {
         resultPathJOp match {
@@ -244,7 +273,7 @@ class FileProcessor[F[_]: Monad: Logging] {
     }
 
     for {
-      resultPathOp <- info"Finding first Parent Path in Path: '${path.toAbsolutePath.toString}' with regex: (match = '${matchRegexp.map(_.regex)}', mismatch = '${mismatchRegexp.map(_.regex)}')" as {
+      resultPathOp <- debug"Finding first Parent Path in Path: '${path.toAbsolutePath.toString}' with regex: (match = '${matchRegexp.map(_.regex)}', mismatch = '${mismatchRegexp.map(_.regex)}')" as {
         inner(path, operation, matchRegexp, mismatchRegexp, maxDepth)
       }
     } yield resultPathOp

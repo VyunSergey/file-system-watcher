@@ -38,7 +38,7 @@ class FileSystemWatcher[F[_]: ConcurrentEffect: ContextShift: Logging](blocker: 
   }
 
   def isFile(path: Path): F[Boolean] =
-    java.nio.file.Files.isRegularFile(path).pure[F]
+    Try(JFiles.isRegularFile(path)).getOrElse(false).pure[F]
 
   def fileSize(path: Path): F[Long] =
     for {
@@ -47,11 +47,14 @@ class FileSystemWatcher[F[_]: ConcurrentEffect: ContextShift: Logging](blocker: 
     } yield size
 
   def rename(file: Path, name: String): F[Unit] =
-  for {
-    isFile <- isFile(file)
-  } yield {
-    if (isFile) JFiles.move(file, file.getParent.resolve(name), StandardCopyOption.REPLACE_EXISTING).pure[F]
-  }
+    for {
+      isFile <- isFile(file)
+      targetName = file.getParent.resolve(name)
+    } yield {
+      if (isFile) {
+        Try(JFiles.move(file, targetName, StandardCopyOption.REPLACE_EXISTING)).getOrElse(file).pure[F]
+      }
+    }
 }
 
 object FileSystemWatcher {
