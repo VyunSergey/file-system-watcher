@@ -37,9 +37,8 @@ class MarkerFileProcessor[F[_]: Monad: Logging: FileProcessor: DataFileProcessor
       _ <- if (isCsvMarkerFile || isZipMarkerFile) {
         for {
           fileProcessor <- implicitly[FileProcessor[F]].pure[F]
-          dataFileMatchRegex <- debug"Creating Data File Match regex" as {
-            (fileName.split("\\.").reverse.tail.reverse.mkString("\\.") + ".*").r
-          }
+          _ <- debug"Creating Data File Match regex"
+          dataFileMatchRegex <- fileProcessor.clearFileName(fileName).map(nm => (nm + ".*").r)
           dataFileMismatchRegex <- debug"Creating Data File Mismatch regex" as {
             (".*\\." + fileName.split("\\.").last).r
           }
