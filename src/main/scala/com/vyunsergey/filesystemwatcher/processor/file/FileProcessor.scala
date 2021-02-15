@@ -2,6 +2,7 @@ package com.vyunsergey.filesystemwatcher.processor.file
 
 import cats.Monad
 import cats.effect.Resource
+import cats.syntax.traverse._
 import net.lingala.zip4j.ZipFile
 import net.lingala.zip4j.model.ZipParameters
 import net.lingala.zip4j.model.enums.EncryptionMethod
@@ -12,6 +13,7 @@ import tofu.syntax.monadic._
 import java.io.{BufferedReader, InputStreamReader}
 import java.nio.file.attribute.BasicFileAttributes
 import java.nio.file.{Files, Path, StandardCopyOption}
+import java.util.Comparator
 import java.util.function.BiPredicate
 import scala.annotation.tailrec
 import scala.jdk.CollectionConverters._
@@ -23,8 +25,8 @@ class FileProcessor[F[_]: Monad: Logging] {
     for {
       isExist <- Files.exists(path).pure[F]
       isFile <- Files.isRegularFile(path).pure[F]
-      entity <- (if (isFile) s"File" else "Directory").pure[F]
-      size <- Files.size(path).pure[F]
+      entity = if (isFile) s"File" else "Directory"
+      size = if (isExist) Files.size(path) else 0L
       p <- info"Received $entity: '${path.toAbsolutePath.toString}' with Size ${size / (1000.0 * 1000.0)}Mb" as path
       _ <- if (isExist) {
         if (isFile) operation(p)
@@ -33,6 +35,10 @@ class FileProcessor[F[_]: Monad: Logging] {
         warn"$entity: '${path.toAbsolutePath.toString}' does not exists, Skipping"
       }
     } yield ()
+
+  def clearFileName(name: String): F[String] = {
+    name.split("\\.").reverse.tail.reverse.mkString(".").pure[F]
+  }
 
   def readFile(path: Path, sep: String = System.lineSeparator): F[Option[String]] = {
     Try {
@@ -62,6 +68,39 @@ class FileProcessor[F[_]: Monad: Logging] {
     } yield ()
   }
 
+  def copyFile(srcPath: Path, tgtPath: Path): F[Unit] = {
+    for {
+      _ <- debug"Copping data from Source Path: '${srcPath.toAbsolutePath.toString}' to Target Path: '${tgtPath.toAbsolutePath.toString}' with copy option: ${StandardCopyOption.REPLACE_EXISTING.toString}" as {
+        if (!Files.exists(tgtPath.getParent)) Files.createDirectories(tgtPath.getParent)
+        Files.copy(srcPath, tgtPath, StandardCopyOption.REPLACE_EXISTING)
+      }
+      _ <- debug"Finish copping data from Source Path: '${srcPath.toAbsolutePath.toString}' to Target Path: '${tgtPath.toAbsolutePath.toString}'"
+    } yield ()
+  }
+
+  def copyFiles(srcPath: Path, tgtPath: Path, clearTarget: Boolean = true): F[Unit] = {
+    for {
+      _ <- if (clearTarget) {
+        for {
+          _ <- debug"Clearing Target Path: '${tgtPath.toAbsolutePath.toString}'"
+          _ <- deleteFile(tgtPath)
+        } yield ()
+      } else ().pure[F]
+      _ <- if (Files.isDirectory(srcPath)) {
+        for {
+          subPaths <- getSubPaths(srcPath)
+          _ <- debug"Source Path: '${srcPath.toAbsolutePath.toString}' is Directory with sub paths: ${subPaths.map(_.getFileName.toString).mkString("[", ",", "]")}"
+          _ <- subPaths.traverse(path => copyFile(path, tgtPath.resolve(path.getFileName)))
+        } yield ()
+      } else {
+        for {
+          _ <- debug"Source Path: '${srcPath.toAbsolutePath.toString}' is File"
+          _ <- copyFile(srcPath, tgtPath)
+        } yield ()
+      }
+    } yield ()
+  }
+
   def renameFile(srcPath: Path, name: String): F[Unit] = {
     for {
       _ <- debug"Renaming file '${srcPath.getFileName.toString}' from Path: '${srcPath.toAbsolutePath.toString}' to file '$name'" as {
@@ -74,7 +113,9 @@ class FileProcessor[F[_]: Monad: Logging] {
   def deleteFile(path: Path): F[Unit] = {
     for {
       _ <- debug"Deleting file '${path.getFileName.toString}' from Path: '${path.toAbsolutePath.toString}'" as {
-        Files.deleteIfExists(path)
+        if (Files.exists(path)) {
+          Files.walk(path).sorted(Comparator.reverseOrder[Path]()).forEach(path => Files.deleteIfExists(path))
+        }
       }
       _ <- debug"Finish deleting file '${path.getFileName.toString}' from Path: '${path.toAbsolutePath.toString}'"
     } yield ()
