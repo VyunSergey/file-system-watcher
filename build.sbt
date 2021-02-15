@@ -9,6 +9,7 @@ val tofuVersion             = "0.9.0"
 val PureConfigVersion       = "0.12.0"
 val ScallopVersion          = "4.0.0"
 val KindProjectorVersion    = "0.11.2"
+val zip4jVersion            = "2.7.0"
 val BetterMonadicForVersion = "0.3.1"
 val ScalaTestVersion        = "3.2.2"
 val ScalaCheckVersion       = "1.14.1"
@@ -50,6 +51,8 @@ lazy val commonLibraryDependencies = Seq(
   "ru.tinkoff"                 %% "tofu-logging-derivation" % tofuVersion,
   // KIND Projector
   "org.typelevel"              %  s"kind-projector_$scalaVersion2_13" % KindProjectorVersion,
+  // Zip4j
+  "net.lingala.zip4j"          % "zip4j"                    % zip4jVersion,
   // ScalaTest
   "org.scalatest"              %% "scalatest"               % ScalaTestVersion % Test,
   // ScalaCheck
