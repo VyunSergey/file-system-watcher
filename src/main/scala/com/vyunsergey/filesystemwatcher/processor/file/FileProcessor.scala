@@ -2,15 +2,19 @@ package com.vyunsergey.filesystemwatcher.processor.file
 
 import cats.Monad
 import cats.effect.Resource
+import net.lingala.zip4j.ZipFile
+import net.lingala.zip4j.model.ZipParameters
+import net.lingala.zip4j.model.enums.EncryptionMethod
 import tofu.logging._
 import tofu.syntax.logging._
 import tofu.syntax.monadic._
 
 import java.io.{BufferedReader, InputStreamReader}
 import java.nio.file.attribute.BasicFileAttributes
-import java.nio.file.{Files, Path}
+import java.nio.file.{Files, Path, StandardCopyOption}
 import java.util.function.BiPredicate
 import scala.annotation.tailrec
+import scala.jdk.CollectionConverters._
 import scala.util.Try
 import scala.util.matching.Regex
 
@@ -30,7 +34,7 @@ class FileProcessor[F[_]: Monad: Logging] {
       }
     } yield ()
 
-  def readFile(path: Path): F[Option[String]] = {
+  def readFile(path: Path, sep: String = System.lineSeparator): F[Option[String]] = {
     Try {
       val br = new BufferedReader(new InputStreamReader(Files.newInputStream(path)))
       try {
@@ -39,7 +43,7 @@ class FileProcessor[F[_]: Monad: Logging] {
 
         while (line != null) {
           sb.append(line)
-          sb.append(System.lineSeparator)
+          sb.append(sep)
           line = br.readLine
         }
         sb.toString
@@ -47,6 +51,107 @@ class FileProcessor[F[_]: Monad: Logging] {
         br.close()
       }
     }.toOption.pure[F]
+  }
+
+  def moveFile(srcPath: Path, tgtPath: Path): F[Unit] = {
+    for {
+      _ <- debug"Moving data from Source Path: '${srcPath.toAbsolutePath.toString}' to Target Path: '${tgtPath.toAbsolutePath.toString}' with copy option: ${StandardCopyOption.REPLACE_EXISTING.toString}" as {
+        Files.move(srcPath, tgtPath, StandardCopyOption.REPLACE_EXISTING)
+      }
+      _ <- debug"Finish moving data from Source Path: '${srcPath.toAbsolutePath.toString}' to Target Path: '${tgtPath.toAbsolutePath.toString}'"
+    } yield ()
+  }
+
+  def renameFile(srcPath: Path, name: String): F[Unit] = {
+    for {
+      _ <- debug"Renaming file '${srcPath.getFileName.toString}' from Path: '${srcPath.toAbsolutePath.toString}' to file '$name'" as {
+        moveFile(srcPath, srcPath.getParent.resolve(name))
+      }
+      _ <- debug"Finish Renaming file '${srcPath.getFileName.toString}' from Path: '${srcPath.toAbsolutePath.toString}' to file '$name'"
+    } yield ()
+  }
+
+  def deleteFile(path: Path): F[Unit] = {
+    for {
+      _ <- debug"Deleting file '${path.getFileName.toString}' from Path: '${path.toAbsolutePath.toString}'" as {
+        Files.deleteIfExists(path)
+      }
+      _ <- debug"Finish deleting file '${path.getFileName.toString}' from Path: '${path.toAbsolutePath.toString}'"
+    } yield ()
+  }
+
+  def zipFiles(paths: List[Path], zipPath: Path): F[Unit] = {
+    for {
+      _ <- debug"Zipping files: ${paths.map(_.toFile.getName)} to archive '${zipPath.getFileName.toString}'" as {
+        new ZipFile(zipPath.toFile).addFiles(paths.map(_.toFile).asJava)
+      }
+      _ <- debug"Finish zipping files: ${paths.map(_.toFile.getName)} to archive '${zipPath.getFileName.toString}'"
+    } yield ()
+  }
+
+  def zipFilesDivided(paths: List[Path], zipPath: Path,
+                      size: Long = 100 * 1024 * 1024): F[Unit] = {
+    for {
+      zipParameters <- debug"Creating zip parameters" as {
+        new ZipParameters()
+      }
+      _ <- debug"Zipping files: ${paths.map(_.toFile.getName)} to archive '${zipPath.getFileName.toString}' divided by size ${size / 1024 / 1024}Mb" as {
+        new ZipFile(zipPath.toFile).createSplitZipFile(paths.map(_.toFile).asJava, zipParameters, true, size)
+      }
+      _ <- debug"Finish zipping files: ${paths.map(_.toFile.getName)} to archive '${zipPath.getFileName.toString}' divided by size ${size / 1024 / 1024}Mb"
+    } yield ()
+  }
+
+  def zipFilesProtected(paths: List[Path], zipPath: Path, password: String): F[Unit] = {
+    for {
+      _ <- debug"Zipping files: ${paths.map(_.toFile.getName)} to protected archive '${zipPath.getFileName.toString}' with password: '$password'" as {
+        new ZipFile(zipPath.toFile, password.toCharArray).addFiles(paths.map(_.toFile).asJava)
+      }
+      _ <- debug"Finish zipping files: ${paths.map(_.toFile.getName)} to archive '${zipPath.getFileName.toString}'"
+    } yield ()
+  }
+
+  def zipFilesProtectedDivided(paths: List[Path], zipPath: Path, password: String,
+                               size: Long = 100 * 1024 * 1024): F[Unit] = {
+    for {
+      zipParameters <- debug"Creating zip parameters" as {
+        val zipParams = new ZipParameters()
+        zipParams.setEncryptFiles(true)
+        zipParams.setEncryptionMethod(EncryptionMethod.ZIP_STANDARD)
+        zipParams
+      }
+      _ <- debug"Zipping files: ${paths.map(_.toFile.getName)} to protected archive '${zipPath.getFileName.toString}' with password: '$password' divided by size ${size / 1024 / 1024}Mb" as {
+        new ZipFile(zipPath.toFile, password.toCharArray).createSplitZipFile(paths.map(_.toFile).asJava, zipParameters, true, size)
+      }
+      _ <- debug"Finish zipping files: ${paths.map(_.toFile.getName)} to protected archive '${zipPath.getFileName.toString}' with password: '$password' divided by size ${size / 1024 / 1024}Mb"
+    } yield ()
+  }
+
+  def unzipFiles(zipPath: Path, path: Path): F[Unit] = {
+    for {
+      _ <- debug"Unzipping archive '${zipPath.getFileName.toString}' to Path: '${path.toAbsolutePath.toString}'" as {
+        new ZipFile(zipPath.toFile).extractAll(path.toAbsolutePath.toString)
+      }
+      _ <- debug"Finish unzipping archive '${zipPath.getFileName.toString}' to Path: '${path.toAbsolutePath.toString}'"
+    } yield ()
+  }
+
+  def unzipFilesProtected(zipPath: Path, path: Path, password: String): F[Unit] = {
+    for {
+      _ <- debug"Unzipping protected archive '${zipPath.getFileName.toString}' with password: '$password' to Path: '${path.toAbsolutePath.toString}'" as {
+        new ZipFile(zipPath.toFile, password.toCharArray).extractAll(path.toAbsolutePath.toString)
+      }
+      _ <- debug"Finish unzipping protected archive '${zipPath.getFileName.toString}' with password: '$password' to Path: '${path.toAbsolutePath.toString}'"
+    } yield ()
+  }
+
+  def getSubPaths(path: Path, maxDepth: Int = 10): F[List[Path]] = {
+    for {
+      subPaths <- debug"Getting All sub paths of Path: ${path.toAbsolutePath.toString}" as {
+        Files.walk(path, maxDepth).filter(!_.equals(path)).iterator().asScala.toList
+      }
+      _ <- debug"Finish got sub paths: '${subPaths.map(_.toAbsolutePath.toString)}'"
+    } yield subPaths
   }
 
   def find(path: Path,
