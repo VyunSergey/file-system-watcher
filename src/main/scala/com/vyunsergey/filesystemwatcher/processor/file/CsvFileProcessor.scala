@@ -2,6 +2,7 @@ package com.vyunsergey.filesystemwatcher.processor.file
 
 import cats.Monad
 import cats.effect.Resource
+import cats.syntax.traverse._
 import com.vyunsergey.filesystemwatcher.common.context.Context
 import com.vyunsergey.filesystemwatcher.common.transform.Transformer
 import tofu.logging._
@@ -9,6 +10,7 @@ import tofu.syntax.logging._
 import tofu.syntax.monadic._
 
 import java.nio.file.Path
+import scala.util.{Failure, Success, Try}
 
 class CsvFileProcessor[F[_]: Monad: Logging: FileProcessor: Transformer](context: Context) {
   def processCsvFile(path: Path): F[Unit] =
@@ -16,14 +18,31 @@ class CsvFileProcessor[F[_]: Monad: Logging: FileProcessor: Transformer](context
 
   def processFile(path: Path): F[Unit] = {
     for {
-      (config, fileProcessor) <- info"Finding productId for Path: '${path.toAbsolutePath.toString}'" as {
-        (context.config, implicitly[FileProcessor[F]])
+      (config, configPath, fileProcessor) <- info"Finding productId for Path: '${path.toAbsolutePath.toString}'" as {
+        (context.config, context.configPath, implicitly[FileProcessor[F]])
+      }
+      csvFileMasks <- Try(config.fileMask("csv")) match {
+        case Success(v) => v.pure[F]
+        case Failure(exp) =>
+          for {
+            _ <- error"Can`t get 'csv' files mask from Config: $config form Path: '${configPath.toAbsolutePath.toString}'. ${exp.getClass.getName}: ${exp.getMessage}"
+          } yield throw exp
       }
       configPathOp <- fileProcessor.findParent(path, _.toAbsolutePath.toString.replace("\\", "/"), Some(config.productMask.r))
       _ <- configPathOp match {
         case None => error"Can`t find productId for Path: '${path.toAbsolutePath.toString}' with Mask: '${config.productMask}'"
         case Some(configPath) =>
           for {
+            _ <- info"Finding Input Directory from Path: '${path.toAbsolutePath.toString}'"
+            inputPath <- fileProcessor.findParent(path, _.getFileName.toString, Some("in".r)).map(_.getOrElse(path))
+            fileName <- fileProcessor.clearFileName(path.getFileName.toString)
+            tempPath = inputPath.getParent.resolve(s"temp/$fileName")
+            _ <- info"Copping data files from Path: ${inputPath.toAbsolutePath.toString} to Path: '${tempPath.toAbsolutePath.toString}'"
+            _ <- fileProcessor.copyFiles(inputPath, tempPath)
+            subPaths <- fileProcessor.getSubPaths(tempPath)
+            notDataFiles = subPaths.filter(!_.getFileName.toString.matches(csvFileMasks.dataFile))
+            _ <- info"Deleting Not Data Files: ${notDataFiles.map(_.getFileName.toString).mkString("[", ",", "]")} from Path: '${tempPath.toAbsolutePath.toString}'"
+            _ <- notDataFiles.traverse(fileProcessor.deleteFile)
             transformer <- info"Creating Transformer" as implicitly[Transformer[F]]
             productId = configPath.getFileName.toString
             transformerConfigOp <- transformer.createConfig(productId)
@@ -37,11 +56,15 @@ class CsvFileProcessor[F[_]: Monad: Logging: FileProcessor: Transformer](context
                     transformerConfig,
                     config.transformer.command
                   )
-                  _ <- info"Finding Input Directory from Path: '${path.toAbsolutePath.toString}'"
-                  inputPath <- fileProcessor.findParent(path, _.getFileName.toString, Some("in".r))
-                  targetPath = inputPath.getOrElse(path).getParent.resolve("out")
+                  _ <- info"Creating Source Directory from Path: '${path.toAbsolutePath.toString}'"
+                  sourceName = s"${productId}__$fileName"
+                  sourcePath = tempPath.getParent.resolve(sourceName)
+                  _ <- fileProcessor.deleteFile(sourcePath)
+                  _ <- fileProcessor.renameFile(tempPath, sourceName)
+                  _ <- info"Creating Target Directory from Path: '${path.toAbsolutePath.toString}'"
+                  targetPath = inputPath.getParent.resolve("out")
                   _ <- info"Executing Transformer Command: $transformerCommand"
-                  _ <- transformer.exec(transformerCommand, path, targetPath)
+                  _ <- transformer.exec(transformerCommand, sourcePath, targetPath)
                 } yield ()
             }
           } yield ()
