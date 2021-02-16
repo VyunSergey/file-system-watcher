@@ -113,7 +113,7 @@ class FileProcessor[F[_]: Monad: Logging] {
       _ <- if (clearTarget) {
         for {
           _ <- debug"Clearing Target Path: '${tgtPath.toAbsolutePath.toString}'"
-          _ <- deleteFile(tgtPath)
+          _ <- deleteFiles(tgtPath)
         } yield ()
       } else ().pure[F]
       isDirectory <- isDirectory(srcPath)
