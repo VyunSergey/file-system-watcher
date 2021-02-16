@@ -37,6 +37,28 @@ class FileProcessor[F[_]: Monad: Logging] {
       }
     } yield ()
 
+  def process(path1: Path, path2: Path)(operation: (Path, Path) => F[Unit]): F[Unit] =
+    for {
+      (isExist1, isExist2) <- isExist(path1) product isExist(path2)
+      (isFile1, isFile2) <- isFile(path1) product isFile(path2)
+      (size1, size2) <- pathSize(path1) product pathSize(path2)
+      (size1Mb, size2Mb) = (size1 / (1024.0 * 1024.0), size2 / (1024.0 * 1024.0))
+      (entity1, entity2) = (if (isFile1) s"File" else "Directory", if (isFile2) s"File" else "Directory")
+      (p1, p2) <- info"Received ($entity1, $entity2): ('${path1.toAbsolutePath.toString}', '${path2.toAbsolutePath.toString}') with Size (${size1Mb}Mb, ${size2Mb}Mb)" as (path1, path2)
+      _ <- if (isExist1 && isExist2) {
+        if (isFile1 && isFile2) operation(p1, p2)
+        else if (isFile2) info"Waiting Files, Skipping $entity1: '${path1.toAbsolutePath.toString}'"
+        else if (isFile1) info"Waiting Files, Skipping $entity2: '${path2.toAbsolutePath.toString}'"
+        else info"Waiting Files, Skipping ($entity1, $entity2): ('${path1.toAbsolutePath.toString}', '${path2.toAbsolutePath.toString}')"
+      } else if (isExist2) {
+        warn"$entity1: '${path1.toAbsolutePath.toString}' does not exists, Skipping"
+      } else if (isExist1) {
+        warn"$entity2: '${path2.toAbsolutePath.toString}' does not exists, Skipping"
+      } else {
+        warn"($entity1, $entity2): ('${path1.toAbsolutePath.toString}', '${path2.toAbsolutePath.toString}') does not exists, Skipping"
+      }
+    } yield ()
+
   def clearFileName(name: String): F[String] = {
     name.split("\\.").reverse.tail.reverse.mkString(".").pure[F]
   }

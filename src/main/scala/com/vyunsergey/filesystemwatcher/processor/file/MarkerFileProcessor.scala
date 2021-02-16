@@ -8,7 +8,6 @@ import tofu.syntax.logging._
 import tofu.syntax.monadic._
 
 import java.nio.file.Path
-import scala.util.{Failure, Success, Try}
 
 class MarkerFileProcessor[F[_]: Monad: Logging: FileProcessor: DataFileProcessor](context: Context) {
   def processMarkerFile(path: Path): F[Unit] =
@@ -16,27 +15,22 @@ class MarkerFileProcessor[F[_]: Monad: Logging: FileProcessor: DataFileProcessor
 
   def processFile(path: Path): F[Unit] =
     for {
-      (config, configPath) <- (context.config, context.configPath).pure[F]
-      csvFileMasks <- Try(config.fileMask("csv")) match {
-        case Success(v) => v.pure[F]
-        case Failure(exp) =>
-          for {
-            _ <- error"Can`t get 'csv' files mask from Config: $config form Path: '${configPath.toAbsolutePath.toString}'. ${exp.getClass.getName}: ${exp.getMessage}"
-          } yield throw exp
+      (config, fileProcessor) <- info"Processing Marker File in Path: '${path.toAbsolutePath.toString}'" as {
+        (context.config, implicitly[FileProcessor[F]])
       }
-      zipFileMasks <- Try(config.fileMask("zip")) match {
-        case Success(v) => v.pure[F]
-        case Failure(exp) =>
-          for {
-            _ <- error"Can`t get 'zip' files mask from Config: $config form Path: '${configPath.toAbsolutePath.toString}'. ${exp.getClass.getName}: ${exp.getMessage}"
-          } yield throw exp
-      }
+      csvFileMasks <- config.csvFileMasks[F]
+      zipFileMasks <- config.zipFileMasks[F]
+      sparkMetaFileMasks <- config.sparkMetaFileMasks[F]
+      sparkDataFileMasks <- config.sparkDataFileMasks[F]
       fileName = path.getFileName.toString
+      filePath = path.toAbsolutePath.toString.replace("\\", "/")
       (csvMarkerFileMasks, zipMarkerFileMasks) = (csvFileMasks.markerFile.r.regex, zipFileMasks.markerFile.r.regex)
-      (isCsvMarkerFile, isZipMarkerFile) = (fileName.matches(csvMarkerFileMasks), fileName.matches(zipMarkerFileMasks))
+      (sparkMetaMarkerFileMasks, sparkDataMarkerFileMasks) = (sparkMetaFileMasks.markerFile.r.regex, sparkDataFileMasks.markerFile.r.regex)
+      (sparkMetaDataFileMasks, sparkDataDataFileMasks) = (sparkMetaFileMasks.dataFile.r.regex, sparkDataFileMasks.dataFile.r.regex)
+      (isCsvMarkerFile, isZipMarkerFile) = (filePath.matches(csvMarkerFileMasks), filePath.matches(zipMarkerFileMasks))
+      (isSparkMetaMarkerFile, isSparkDataMarkerFile) = (filePath.matches(sparkMetaMarkerFileMasks), filePath.matches(sparkDataMarkerFileMasks))
       _ <- if (isCsvMarkerFile || isZipMarkerFile) {
         for {
-          fileProcessor <- implicitly[FileProcessor[F]].pure[F]
           _ <- debug"Creating Data File Match regex"
           dataFileMatchRegex <- fileProcessor.clearFileName(fileName).map(nm => (nm + ".*").r)
           dataFileMismatchRegex <- debug"Creating Data File Mismatch regex" as {
@@ -52,16 +46,82 @@ class MarkerFileProcessor[F[_]: Monad: Logging: FileProcessor: DataFileProcessor
           )
           _ <- if (subPathOp.nonEmpty) {
             for {
-              subPath <- subPathOp.get.pure[F]
-              _ <- info"Finding Data File with Path: '${subPath.toAbsolutePath.toString}'"
-              dataFileProcessor <- info"Going process Data File in Path: '${subPath.toAbsolutePath.toString}'" as {
+              dataFileProcessor <- info"Going process DataFile in Path: '${subPathOp.get.toAbsolutePath.toString}'" as {
                 implicitly[DataFileProcessor[F]]
               }
-              _ <- dataFileProcessor.processDataFile(subPath)
+              _ <- dataFileProcessor.processDataFile(subPathOp.get)
             } yield ()
           } else error"No Data File in Path: '${path.getParent.toAbsolutePath.toString}'!"
         } yield ()
-      } else info"Path: '${path.toAbsolutePath.toString}' with File: $fileName does not matches marker file masks: ($csvMarkerFileMasks, $zipMarkerFileMasks)"
+      } else if (isSparkMetaMarkerFile || isSparkDataMarkerFile) {
+        if (isSparkMetaMarkerFile) {
+          for {
+            sparkDataMarkerFileMatchRegex <- debug"Creating Spark Data MarkerFile Match regex" as sparkDataMarkerFileMasks.r
+            _ <- info"Finding Path of Spark Data MarkerFile in Path: '${path.getParent.getParent.toAbsolutePath.toString}'"
+            markerSubPathOp <- fileProcessor.find(
+              path.getParent.getParent,
+              _.toAbsolutePath.toString.replace("\\", "/"),
+              _.isRegularFile,
+              Some(sparkDataMarkerFileMatchRegex),
+              None
+            )
+            _ <- if (markerSubPathOp.nonEmpty) {
+              for {
+                sparkDataDataFileMatchRegex <- debug"Creating Spark Data DataFile Match regex" as sparkDataDataFileMasks.r
+                _ <- info"Finding Path of Spark Data DataFile in Path: '${markerSubPathOp.get.getParent.toAbsolutePath.toString}'"
+                dataSubPathOp <- fileProcessor.find(
+                  markerSubPathOp.get.getParent,
+                  _.toAbsolutePath.toString.replace("\\", "/"),
+                  _.isRegularFile,
+                  Some(sparkDataDataFileMatchRegex),
+                  None
+                )
+                _ <- if (dataSubPathOp.nonEmpty) {
+                  for {
+                    dataFileProcessor <- info"Going process Spark Files in Path: '${dataSubPathOp.get.toAbsolutePath.toString}'" as {
+                      implicitly[DataFileProcessor[F]]
+                    }
+                    _ <- dataFileProcessor.processDataFile(dataSubPathOp.get)
+                  } yield ()
+                } else error"No Spark Data DataFile in Path: '${markerSubPathOp.get.getParent.toAbsolutePath.toString}'!"
+              } yield ()
+            } else info"No Spark Data MarkerFile in Path: '${path.getParent.getParent.toAbsolutePath.toString}'"
+          } yield ()
+        } else if (isSparkDataMarkerFile) {
+          for {
+            sparkMetaMarkerFileMatchRegex <- debug"Creating Spark Meta MarkerFile Match regex" as sparkMetaMarkerFileMasks.r
+            _ <- info"Finding Path of Spark Meta MarkerFile in Path: '${path.getParent.getParent.toAbsolutePath.toString}'"
+            markerSubPathOp <- fileProcessor.find(
+              path.getParent.getParent,
+              _.toAbsolutePath.toString.replace("\\", "/"),
+              _.isRegularFile,
+              Some(sparkMetaMarkerFileMatchRegex),
+              None
+            )
+            _ <- if (markerSubPathOp.nonEmpty) {
+              for {
+                sparkMetaDataFileMatchRegex <- debug"Creating Spark Meta DataFile Match regex" as sparkMetaDataFileMasks.r
+                _ <- info"Finding Path of Spark Meta DataFile in Path: '${markerSubPathOp.get.getParent.toAbsolutePath.toString}'"
+                dataSubPathOp <- fileProcessor.find(
+                  markerSubPathOp.get.getParent,
+                  _.toAbsolutePath.toString.replace("\\", "/"),
+                  _.isRegularFile,
+                  Some(sparkMetaDataFileMatchRegex),
+                  None
+                )
+                _ <- if (dataSubPathOp.nonEmpty) {
+                  for {
+                    dataFileProcessor <- info"Going process Spark Files in Path: '${dataSubPathOp.get.toAbsolutePath.toString}'" as {
+                      implicitly[DataFileProcessor[F]]
+                    }
+                    _ <- dataFileProcessor.processDataFile(dataSubPathOp.get)
+                  } yield ()
+                } else error"No Spark Meta DataFile in Path: '${markerSubPathOp.get.getParent.toAbsolutePath.toString}'!"
+              } yield ()
+            } else info"No Spark Meta MarkerFile in Path: '${path.getParent.getParent.toAbsolutePath.toString}'"
+          } yield ()
+        } else ().pure[F]
+      } else info"Path: '$filePath' does not matches MarkerFile masks: ('$csvMarkerFileMasks', '$zipMarkerFileMasks', '$sparkMetaMarkerFileMasks', '$sparkDataMarkerFileMasks')"
     } yield ()
 }
 

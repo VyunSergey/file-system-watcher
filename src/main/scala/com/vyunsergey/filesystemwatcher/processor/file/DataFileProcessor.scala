@@ -9,34 +9,25 @@ import tofu.syntax.logging._
 import tofu.syntax.monadic._
 
 import java.nio.file.Path
-import scala.util.{Failure, Success, Try}
 
-class DataFileProcessor[F[_]: Monad: Logging: FileProcessor: Transformer: CsvFileProcessor: ZipFileProcessor](context: Context) {
+class DataFileProcessor[F[_]: Monad: Logging: FileProcessor: Transformer: CsvFileProcessor: ZipFileProcessor: SparkFileProcessor](context: Context) {
   def processDataFile(path: Path): F[Unit] =
     implicitly[FileProcessor[F]].process(path)(processFile)
 
   def processFile(path: Path): F[Unit] =
     for {
-      (config, configPath, fileProcessor) <- info"Processing Data File in Path: '${path.toAbsolutePath.toString}'" as {
-        (context.config, context.configPath, implicitly[FileProcessor[F]])
+      (config, fileProcessor) <- info"Processing Data File in Path: '${path.toAbsolutePath.toString}'" as {
+        (context.config, implicitly[FileProcessor[F]])
       }
-      csvFileMasks <- Try(config.fileMask("csv")) match {
-        case Success(v) => v.pure[F]
-        case Failure(exp) =>
-          for {
-            _ <- error"Can`t get 'csv' files mask from Config: $config form Path: '${configPath.toAbsolutePath.toString}'. ${exp.getClass.getName}: ${exp.getMessage}"
-          } yield throw exp
-      }
-      zipFileMasks <- Try(config.fileMask("zip")) match {
-        case Success(v) => v.pure[F]
-        case Failure(exp) =>
-          for {
-            _ <- error"Can`t get 'zip' files mask from Config: $config form Path: '${configPath.toAbsolutePath.toString}'. ${exp.getClass.getName}: ${exp.getMessage}"
-          } yield throw exp
-      }
-      fileName = path.getFileName.toString
+      csvFileMasks <- config.csvFileMasks[F]
+      zipFileMasks <- config.zipFileMasks[F]
+      sparkMetaFileMasks <- config.sparkMetaFileMasks[F]
+      sparkDataFileMasks <- config.sparkDataFileMasks[F]
+      filePath = path.toAbsolutePath.toString.replace("\\", "/")
       (csvDataFileMasks, zipDataFileMasks) = (csvFileMasks.dataFile.r.regex, zipFileMasks.dataFile.r.regex)
-      (isCsvDataFile, isZipDataFile) = (fileName.matches(csvDataFileMasks), fileName.matches(zipDataFileMasks))
+      (sparkMetaDataFileMasks, sparkDataDataFileMasks) = (sparkMetaFileMasks.dataFile.r.regex, sparkDataFileMasks.dataFile.r.regex)
+      (isCsvDataFile, isZipDataFile) = (filePath.matches(csvDataFileMasks), filePath.matches(zipDataFileMasks))
+      (isSparkMetaDataFile, isSparkDataDataFile) = (filePath.matches(sparkMetaDataFileMasks), filePath.matches(sparkDataDataFileMasks))
       _ <- if (isCsvDataFile || isZipDataFile) {
         for {
           _ <- info"Finding productId for Path: '${path.toAbsolutePath.toString}'"
@@ -70,11 +61,53 @@ class DataFileProcessor[F[_]: Monad: Logging: FileProcessor: Transformer: CsvFil
               } yield ()
           }
         } yield ()
-      } else info"Path: '${path.toAbsolutePath.toString}' with File: $fileName does not matches data file masks: ($csvDataFileMasks, $zipDataFileMasks)"
+      } else if (isSparkMetaDataFile || isSparkDataDataFile) {
+        if (isSparkMetaDataFile) {
+          for {
+            sparkDataDataFileMatchRegex <- debug"Creating Spark Data DataFile Match regex" as sparkDataDataFileMasks.r
+            _ <- info"Finding Path of Spark Meta MarkerFile in Path: '${path.getParent.getParent.toAbsolutePath.toString}'"
+            dataSubPathOp <- fileProcessor.find(
+              path.getParent.getParent,
+              _.toAbsolutePath.toString.replace("\\", "/"),
+              _.isRegularFile,
+              Some(sparkDataDataFileMatchRegex),
+              None
+            )
+            _ <- if (dataSubPathOp.nonEmpty) {
+              for {
+                sparkFileProcessor <- info"Going process .CSV Spark Data Files in Paths: (meta = '${path.toAbsolutePath.toString}', data = '${dataSubPathOp.get.toAbsolutePath.toString}')" as {
+                  implicitly[SparkFileProcessor[F]]
+                }
+                _ <- sparkFileProcessor.processSparkFile(path, dataSubPathOp.get)
+              } yield ()
+            } else error"No Spark Data DataFile in Path: '${path.getParent.getParent.toAbsolutePath.toString}'!"
+          } yield ()
+        } else if (isSparkDataDataFile) {
+          for {
+            sparkMetaDataFileMatchRegex <- debug"Creating Spark Data DataFile Match regex" as sparkMetaDataFileMasks.r
+            _ <- info"Finding Path of Spark Meta MarkerFile in Path: '${path.getParent.getParent.toAbsolutePath.toString}'"
+            dataSubPathOp <- fileProcessor.find(
+              path.getParent.getParent,
+              _.toAbsolutePath.toString.replace("\\", "/"),
+              _.isRegularFile,
+              Some(sparkMetaDataFileMatchRegex),
+              None
+            )
+            _ <- if (dataSubPathOp.nonEmpty) {
+              for {
+                sparkFileProcessor <- info"Going process .CSV Spark Data Files in Paths: (meta = '${dataSubPathOp.get.toAbsolutePath.toString}', data = '${path.toAbsolutePath.toString}')" as {
+                  implicitly[SparkFileProcessor[F]]
+                }
+                _ <- sparkFileProcessor.processSparkFile(dataSubPathOp.get, path)
+              } yield ()
+            } else error"No Spark Meta DataFile in Path: '${path.getParent.getParent.toAbsolutePath.toString}'!"
+          } yield ()
+        } else ().pure[F]
+      } else info"Path: '$filePath' does not matches DataFile masks: ('$csvDataFileMasks', '$zipDataFileMasks', '$sparkMetaDataFileMasks', '$sparkDataDataFileMasks')"
     } yield ()
 }
 
 object DataFileProcessor {
-  def apply[F[_]: Monad: FileProcessor: Transformer: CsvFileProcessor: ZipFileProcessor](context: Context, logs: Logs[F, F]): Resource[F, DataFileProcessor[F]] =
+  def apply[F[_]: Monad: FileProcessor: Transformer: CsvFileProcessor: ZipFileProcessor: SparkFileProcessor](context: Context, logs: Logs[F, F]): Resource[F, DataFileProcessor[F]] =
     Resource.liftF(logs.forService[DataFileProcessor[F]].map(implicit l => new DataFileProcessor[F](context)))
 }

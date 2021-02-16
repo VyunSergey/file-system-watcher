@@ -10,7 +10,6 @@ import tofu.syntax.logging._
 import tofu.syntax.monadic._
 
 import java.nio.file.Path
-import scala.util.{Failure, Success, Try}
 
 class ZipFileProcessor[F[_]: Monad: Logging: FileProcessor: Transformer](context: Context) {
   def processZipFile(path: Path, transformerConfig: TransformerConfig): F[Unit] =
@@ -18,15 +17,8 @@ class ZipFileProcessor[F[_]: Monad: Logging: FileProcessor: Transformer](context
 
   def processFile(path: Path, transformerConfig: TransformerConfig): F[Unit] = {
     for {
-      (config, configPath, fileProcessor) <- info"Processing .ZIP file in Path: '${path.toAbsolutePath.toString}'" as {
-        (context.config, context.configPath, implicitly[FileProcessor[F]])
-      }
-      csvFileMasks <- Try(config.fileMask("csv")) match {
-        case Success(v) => v.pure[F]
-        case Failure(exp) =>
-          for {
-            _ <- error"Can`t get 'csv' files mask from Config: $config form Path: '${configPath.toAbsolutePath.toString}'. ${exp.getClass.getName}: ${exp.getMessage}"
-          } yield throw exp
+      (config, fileProcessor) <- info"Processing .ZIP file in Path: '${path.toAbsolutePath.toString}'" as {
+        (context.config, implicitly[FileProcessor[F]])
       }
       _ <- info"Finding Input Directory from Path: '${path.toAbsolutePath.toString}'"
       inputPath <- fileProcessor.findParent(path, _.getFileName.toString, Some("in".r)).map(_.getOrElse(path))
@@ -36,7 +28,7 @@ class ZipFileProcessor[F[_]: Monad: Logging: FileProcessor: Transformer](context
       _ <- fileProcessor.deleteFiles(tempPath.getParent)
       _ <- fileProcessor.unzipFiles(path, tempPath)
       subPaths <- fileProcessor.getSubPaths(tempPath)
-      notDataFiles = subPaths.filter(!_.getFileName.toString.matches(csvFileMasks.dataFile))
+      notDataFiles = subPaths.filter(!_.getFileName.toString.matches(config.csvMask))
       _ <- info"Deleting Not Data Files: ${notDataFiles.map(_.getFileName.toString).mkString("[", ",", "]")} from Path: '${tempPath.toAbsolutePath.toString}'"
       _ <- notDataFiles.traverse(fileProcessor.deleteFiles)
       _ <- info"Creating Source Directory from Path: '${path.toAbsolutePath.toString}'"
@@ -44,9 +36,6 @@ class ZipFileProcessor[F[_]: Monad: Logging: FileProcessor: Transformer](context
       sourcePath = tempPath.getParent.resolve(sourceName)
       _ <- fileProcessor.deleteFiles(sourcePath)
       _ <- fileProcessor.renameFile(tempPath, sourceName)
-      //_ <- info"Getting Source Data Files Size from Path: '${sourcePath.toAbsolutePath.toString}'"
-      //sourceSize <- fileProcessor.pathSize(sourcePath)
-      //numParts = 1 + (sourceSize / config.transformer.maxFileSize).toInt
       _ <- info"Creating Target Directory from Path: '${inputPath.toAbsolutePath.toString}'"
       targetPath = inputPath.getParent.resolve("out")
       transformer <- info"Creating Transformer" as implicitly[Transformer[F]]
@@ -57,7 +46,7 @@ class ZipFileProcessor[F[_]: Monad: Logging: FileProcessor: Transformer](context
         config.transformer.command
       )
       _ <- info"Executing Transformer Command: $transformerCommand"
-      _ <- transformer.exec(transformerCommand, 1, sourcePath, targetPath)
+      _ <- transformer.exec(transformerCommand, sourcePath, targetPath)
     } yield ()
   }
 }
