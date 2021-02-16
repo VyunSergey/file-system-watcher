@@ -46,11 +46,13 @@ class Transformer[F[_]: Monad: Logging: TransformerConfigReader](context: Contex
   }
 
   def exec(command: String,
+           numParts: Int,
            sourcePath: Path,
            targetPath: Path): F[Unit] = {
     for {
       command <- info"Adding Source Path and Target Path to Command" as {
         command
+          .replaceFirst("<NUM_PARTS>", numParts.toString)
           .replaceFirst("<SRC_PATH>", sourcePath.toAbsolutePath.toString.replace("\\", "/"))
           .replaceFirst("<TGT_PATH>", targetPath.toAbsolutePath.toString.replace("\\", "/"))
       }
@@ -60,7 +62,7 @@ class Transformer[F[_]: Monad: Logging: TransformerConfigReader](context: Contex
         Try(Process(command).run())
       }
       _ <- processTry match {
-        case Success(_) => info"Transforming to Key-Value"
+        case Success(_) => info"Transforming to Key-Value..."
         case Failure(exp) => error"Can`t run Transformer Command: '$command'. ${exp.getClass.getName}: ${exp.getMessage}"
       }
     } yield ()

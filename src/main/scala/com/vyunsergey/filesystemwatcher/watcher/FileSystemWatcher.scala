@@ -34,7 +34,7 @@ class FileSystemWatcher[F[_]: ConcurrentEffect: ContextShift: Logging](blocker: 
     case Event.Modified(path: Path, _: Int) => fileSize(path).map((event, _))
     case Event.Overflow(_: Int) => (event, 0L).pure[F]
     case Event.NonStandard(_, registeredDirectory: Path) =>
-      file.size(blocker, registeredDirectory).map((event, _))
+      fileSize(registeredDirectory).map((event, _))
   }
 
   def isFile(path: Path): F[Boolean] =

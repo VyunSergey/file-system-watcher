@@ -25,7 +25,7 @@ class FileProcessor[F[_]: Monad: Logging] {
     for {
       isExist <- isExist(path)
       isFile <- isFile(path)
-      size <- fileSize(path)
+      size <- pathSize(path)
       sizeMb = size / (1024.0 * 1024.0)
       entity = if (isFile) s"File" else "Directory"
       p <- info"Received $entity: '${path.toAbsolutePath.toString}' with Size ${sizeMb}Mb" as path
@@ -52,6 +52,20 @@ class FileProcessor[F[_]: Monad: Logging] {
 
   def fileSize(path: Path): F[Long] =
     Try(JFiles.size(path)).getOrElse(0L).pure[F]
+
+  def directorySize(path: Path): F[Long] = {
+    for {
+      subPaths <- Try(JFiles.walk(path).iterator().asScala.toList).getOrElse(List.empty[Path]).pure[F]
+      size <- subPaths.traverse(fileSize).map(_.sum)
+    } yield size
+  }
+
+  def pathSize(path: Path): F[Long] = {
+    for {
+      isFile <- isFile(path)
+      size <- if (isFile) fileSize(path) else directorySize(path)
+    } yield size
+  }
 
   def readFile(path: Path, sep: String = System.lineSeparator): F[Option[String]] = {
     Try {

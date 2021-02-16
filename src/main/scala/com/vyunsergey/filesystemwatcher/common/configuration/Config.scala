@@ -20,7 +20,7 @@ object Config {
   val defaultPath: Path = Paths.get(new File(getClass.getResource("/application.conf").toURI).toURI)
 
   final case class FileMask(dataFile: String, markerFile: String)
-  final case class Transformer(mode: String, productPath: Path, jarPath: Path, command: String, options: Options)
+  final case class Transformer(mode: String, maxFileSize: Long, productPath: Path, jarPath: Path, command: String, options: Options)
   final case class Options(spark: SparkOptions, writer: WriterOptions)
   final case class SparkOptions(spark: List[String])
   final case class WriterOptions(
@@ -91,6 +91,7 @@ object Config {
   implicit val transformerLoggable: DictLoggable[Transformer] = new DictLoggable[Transformer] {
     override def fields[I, V, R, S](a: Transformer, i: I)(implicit r: LogRenderer[I, V, R, S]): R = {
       r.addString("mode", a.mode, i) |+|
+        r.addString("maxFileSize", a.maxFileSize.toString, i) |+|
         r.addString("productPath", a.productPath.toAbsolutePath.toString, i) |+|
         r.addString("jarPath", a.jarPath.toAbsolutePath.toString, i) |+|
         r.addString("command", a.command, i) |+|
@@ -99,6 +100,7 @@ object Config {
 
     override def logShow(a: Transformer): String =
       s"Transformer(mode = '${a.mode}'" +
+        s", maxFileSize = '${a.maxFileSize.toString}'" +
         s", productPath = '${a.productPath.toAbsolutePath.toString}'" +
         s", jarPath = '${a.jarPath.toAbsolutePath.toString}'" +
         s", command = '${a.command}'" +

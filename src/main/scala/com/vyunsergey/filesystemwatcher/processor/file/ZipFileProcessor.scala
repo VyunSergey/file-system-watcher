@@ -61,10 +61,13 @@ class ZipFileProcessor[F[_]: Monad: Logging: FileProcessor: Transformer](context
                   sourcePath = tempPath.getParent.resolve(sourceName)
                   _ <- fileProcessor.deleteFiles(sourcePath)
                   _ <- fileProcessor.renameFile(tempPath, sourceName)
+                  _ <- info"Getting Source data files size from Path: '${sourcePath.toAbsolutePath.toString}'"
+                  sourceSize <- fileProcessor.pathSize(sourcePath)
+                  numParts = 1 + (sourceSize / config.transformer.maxFileSize).toInt
                   _ <- info"Creating Target Directory from Path: '${path.toAbsolutePath.toString}'"
                   targetPath = inputPath.getParent.resolve("out")
                   _ <- info"Executing Transformer Command: $transformerCommand"
-                  _ <- transformer.exec(transformerCommand, sourcePath, targetPath)
+                  _ <- transformer.exec(transformerCommand, 1, sourcePath, targetPath)
                 } yield ()
             }
           } yield ()
