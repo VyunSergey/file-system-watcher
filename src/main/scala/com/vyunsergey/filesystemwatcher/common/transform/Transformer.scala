@@ -45,14 +45,11 @@ class Transformer[F[_]: Monad: Logging: TransformerConfigReader](context: Contex
     } yield command
   }
 
-  def exec(command: String,
-           numParts: Int,
-           sourcePath: Path,
-           targetPath: Path): F[Unit] = {
+  def exec(command: String, sourcePath: Path, targetPath: Path, numParts: Option[Int] = None): F[Unit] = {
     for {
       command <- info"Adding Source Path and Target Path to Command" as {
-        command
-          .replaceFirst("<NUM_PARTS>", numParts.toString)
+        numParts.map(num => command.replaceFirst("<NUM_PARTS>", num.toString))
+          .getOrElse(command.replaceFirst(" --num-parts=<NUM_PARTS>", ""))
           .replaceFirst("<SRC_PATH>", sourcePath.toAbsolutePath.toString.replace("\\", "/"))
           .replaceFirst("<TGT_PATH>", targetPath.toAbsolutePath.toString.replace("\\", "/"))
       }
