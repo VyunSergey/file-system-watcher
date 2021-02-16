@@ -20,7 +20,7 @@ class Transformer[F[_]: Monad: Logging: TransformerConfigReader](context: Contex
       transformerReaderConfigOp <- transformerConfigReader.readReaderConfig(productId)
       transformerConfig <- transformerReaderConfigOp match {
         case Some(transformerReaderConfig) => info"Creating Transformer Config for product: $productId" as {
-          Some(TransformerConfig.make(transformerReaderConfig, context.config))
+          Some(TransformerConfig.make(productId, transformerReaderConfig, context.config))
         }
         case None => error"Not Found Transformer Reader Config for product: $productId" as None
       }
@@ -71,5 +71,5 @@ class Transformer[F[_]: Monad: Logging: TransformerConfigReader](context: Contex
 
 object Transformer {
   def apply[F[_]: Monad: TransformerConfigReader](context: Context, logs: Logs[F, F]): Resource[F, Transformer[F]] =
-    Resource.liftF(logs.forService[Transformer[F]].map(implicit l => new Transformer[F](context: Context)))
+    Resource.liftF(logs.forService[Transformer[F]].map(implicit l => new Transformer[F](context)))
 }

@@ -8,6 +8,7 @@ import TransformerConfig._
 import com.vyunsergey.filesystemwatcher.common.configuration.Config
 
 final case class TransformerConfig(
+                                    productId: String,
                                     spark: TransformerSparkConfig,
                                     reader: TransformerReaderConfig,
                                     writer: TransformerWriterConfig
@@ -21,11 +22,12 @@ final case class TransformerConfig(
 }
 
 object TransformerConfig {
-  def make(reader: TransformerReaderConfig, config: Config): TransformerConfig = {
+  def make(productId: String, reader: TransformerReaderConfig, config: Config): TransformerConfig = {
     val sparkOptions = config.transformer.options.spark
     val writerOptions = config.transformer.options.writer
 
     TransformerConfig(
+      productId = productId,
       spark = TransformerSparkConfig(sparkOptions.spark),
       reader,
       writer = TransformerWriterConfig(
@@ -167,13 +169,15 @@ object TransformerConfig {
   implicit val transformerConfigLoggable: DictLoggable[TransformerConfig] =
     new DictLoggable[TransformerConfig] {
       override def fields[I, V, R, S](a: TransformerConfig, i: I)(implicit r: LogRenderer[I, V, R, S]): R = {
-        r.addString("spark", transformerSparkConfigLoggable.logShow(a.spark), i) |+|
+        r.addString("productId", a.productId, i) |+|
+          r.addString("spark", transformerSparkConfigLoggable.logShow(a.spark), i) |+|
           r.addString("reader", transformerReaderConfigLoggable.logShow(a.reader), i) |+|
           r.addString("writer", transformerWriterConfigLoggable.logShow(a.writer), i)
       }
 
       override def logShow(a: TransformerConfig): String =
-        s"TransformerConfig(spark = '${transformerSparkConfigLoggable.logShow(a.spark)}'" +
+        s"TransformerConfig(productId = '${a.productId}'" +
+          s", spark = '${transformerSparkConfigLoggable.logShow(a.spark)}'" +
           s", reader = '${transformerReaderConfigLoggable.logShow(a.reader)}'" +
           s", writer = '${transformerWriterConfigLoggable.logShow(a.writer)}')"
     }

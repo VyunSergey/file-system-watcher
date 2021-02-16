@@ -47,5 +47,5 @@ class TransformerConfigReader[F[_]: Monad: Logging: FileProcessor](context: Cont
 
 object TransformerConfigReader {
   def apply[F[_]: Monad: FileProcessor](context: Context, logs: Logs[F, F]): Resource[F, TransformerConfigReader[F]] =
-    Resource.liftF(logs.forService[TransformerConfigReader[F]].map(implicit l => new TransformerConfigReader[F](context: Context)))
+    Resource.liftF(logs.forService[TransformerConfigReader[F]].map(implicit l => new TransformerConfigReader[F](context)))
 }
