@@ -1,20 +1,44 @@
 package com.vyunsergey.filesystemwatcher.common.configuration
 
 import cats.syntax.semigroup._
-import tofu.logging.{DictLoggable, LogRenderer}
+import tofu.logging._
+import tofu.syntax.logging._
+import tofu.syntax.monadic._
 import pureconfig.ConfigConvert
 import pureconfig.generic.semiauto.deriveConvert
 
 import java.io.File
 import java.nio.file.{Path, Paths}
 import Config._
+import cats.Monad
+
+import scala.util.{Failure, Success, Try}
 
 final case class Config(
                          path: Path,
                          productMask: String,
+                         csvMask: String,
+                         zipMask: String,
                          fileMask: Map[String, FileMask],
                          transformer: Transformer
-                       )
+                       ) {
+  def csvFileMasks[F[_]: Monad: Logging]: F[FileMask] = getFileMask("csv")
+  def zipFileMasks[F[_]: Monad: Logging]: F[FileMask] = getFileMask("zip")
+  def sparkMetaFileMasks[F[_]: Monad: Logging]: F[FileMask] = getFileMask("spark-meta")
+  def sparkDataFileMasks[F[_]: Monad: Logging]: F[FileMask] = getFileMask("spark-data")
+
+  def getFileMask[F[_]: Monad: Logging](key: String): F[FileMask] = {
+    for {
+      mask <- Try(fileMask(key)) match {
+        case Success(v) => v.pure[F]
+        case Failure(exp) =>
+          for {
+            _ <- error"Can`t get '$key' files mask from Config: $this form Path: '${defaultPath.toAbsolutePath.toString}'. ${exp.getClass.getName}: ${exp.getMessage}"
+          } yield throw exp
+      }
+    } yield mask
+  }
+}
 
 object Config {
   val defaultPath: Path = Paths.get(new File(getClass.getResource("/application.conf").toURI).toURI)
@@ -111,6 +135,8 @@ object Config {
     override def fields[I, V, R, S](a: Config, i: I)(implicit r: LogRenderer[I, V, R, S]): R = {
       r.addString("path", a.path.toAbsolutePath.toString, i) |+|
         r.addString("productMask", a.productMask, i) |+|
+        r.addString("csvMask", a.csvMask, i) |+|
+        r.addString("zipMask", a.zipMask, i) |+|
         r.addString("fileMask", a.fileMask.view.mapValues(fileMaskLoggable.logShow).mkString("[", ",", "]"), i) |+|
         r.addString("transformer", transformerLoggable.logShow(a.transformer), i)
     }
@@ -118,6 +144,8 @@ object Config {
     override def logShow(a: Config): String =
       s"Config(path = '${a.path.toAbsolutePath.toString}'" +
         s", productMask = '${a.productMask}'" +
+        s", csvMask = '${a.csvMask}'" +
+        s", zipMask = '${a.zipMask}'" +
         s", fileMask = '${a.fileMask.view.mapValues(fileMaskLoggable.logShow).mkString("[", ",", "]")}'" +
         s", transformer = '${transformerLoggable.logShow(a.transformer)}')"
   }
