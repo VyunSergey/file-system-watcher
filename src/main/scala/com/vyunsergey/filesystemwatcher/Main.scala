@@ -7,7 +7,7 @@ import com.vyunsergey.filesystemwatcher.common.arguments.ArgumentsReader
 import com.vyunsergey.filesystemwatcher.common.configuration.{Config, ConfigReader}
 import com.vyunsergey.filesystemwatcher.common.context.ContextReader
 import com.vyunsergey.filesystemwatcher.common.transform.{Transformer, TransformerConfigReader}
-import com.vyunsergey.filesystemwatcher.processor.file.{CsvFileProcessor, DataFileProcessor, FileProcessor, MarkerFileProcessor, SparkFileProcessor, ZipFileProcessor}
+import com.vyunsergey.filesystemwatcher.processor.file.{CsvFileProcessor, DataFileProcessor, FileProcessor, MarkerFileProcessor, SparkFileProcessor, TransferFileProcessor, ZipFileProcessor}
 import com.vyunsergey.filesystemwatcher.processor.event.EventProcessor
 import com.vyunsergey.filesystemwatcher.watcher.FileSystemWatcher
 
@@ -34,6 +34,7 @@ object Main extends IOApp {
       implicit0(csvFileProcessor: CsvFileProcessor[IO]) <- CsvFileProcessor[IO](context, syncLogs)
       implicit0(zipFileProcessor: ZipFileProcessor[IO]) <- ZipFileProcessor[IO](context, syncLogs)
       implicit0(sparkFileProcessor: SparkFileProcessor[IO]) <- SparkFileProcessor[IO](context, syncLogs)
+      implicit0(transferFileProcessor: TransferFileProcessor[IO]) <- TransferFileProcessor[IO](context, syncLogs)
       implicit0(dataFileProcessor: DataFileProcessor[IO]) <- DataFileProcessor[IO](context, syncLogs)
       implicit0(markerFileProcessor: MarkerFileProcessor[IO]) <- MarkerFileProcessor[IO](context, syncLogs)
       eventProcessor <- EventProcessor[IO](syncLogs)

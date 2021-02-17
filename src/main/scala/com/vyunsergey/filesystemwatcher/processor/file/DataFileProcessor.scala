@@ -10,7 +10,13 @@ import tofu.syntax.monadic._
 
 import java.nio.file.Path
 
-class DataFileProcessor[F[_]: Monad: Logging: FileProcessor: Transformer: CsvFileProcessor: ZipFileProcessor: SparkFileProcessor](context: Context) {
+class DataFileProcessor[F[_]: Monad: Logging:
+                        FileProcessor:
+                        Transformer:
+                        CsvFileProcessor:
+                        ZipFileProcessor:
+                        SparkFileProcessor:
+                        TransferFileProcessor](context: Context) {
   def processDataFile(path: Path): F[Unit] =
     implicitly[FileProcessor[F]].process(path)(processFile)
 
@@ -23,10 +29,11 @@ class DataFileProcessor[F[_]: Monad: Logging: FileProcessor: Transformer: CsvFil
       zipFileMasks <- config.zipFileMasks[F]
       sparkMetaFileMasks <- config.sparkMetaFileMasks[F]
       sparkDataFileMasks <- config.sparkDataFileMasks[F]
+      transferFileMasks <- config.transferFileMasks[F]
       filePath = path.toAbsolutePath.toString.replace("\\", "/")
-      (csvDataFileMasks, zipDataFileMasks) = (csvFileMasks.dataFile.r.regex, zipFileMasks.dataFile.r.regex)
+      (csvDataFileMasks, zipDataFileMasks, transferDataFileMasks) = (csvFileMasks.dataFile.r.regex, zipFileMasks.dataFile.r.regex, transferFileMasks.dataFile.r.regex)
       (sparkMetaDataFileMasks, sparkDataDataFileMasks) = (sparkMetaFileMasks.dataFile.r.regex, sparkDataFileMasks.dataFile.r.regex)
-      (isCsvDataFile, isZipDataFile) = (filePath.matches(csvDataFileMasks), filePath.matches(zipDataFileMasks))
+      (isCsvDataFile, isZipDataFile, isTransferDataFile) = (filePath.matches(csvDataFileMasks), filePath.matches(zipDataFileMasks), filePath.matches(transferDataFileMasks))
       (isSparkMetaDataFile, isSparkDataDataFile) = (filePath.matches(sparkMetaDataFileMasks), filePath.matches(sparkDataDataFileMasks))
       _ <- if (isCsvDataFile || isZipDataFile) {
         for {
@@ -103,11 +110,24 @@ class DataFileProcessor[F[_]: Monad: Logging: FileProcessor: Transformer: CsvFil
             } else error"No Spark Meta DataFile in Path: '${path.getParent.getParent.toAbsolutePath.toString}'!"
           } yield ()
         } else ().pure[F]
-      } else info"Path: '$filePath' does not matches DataFile masks: ('$csvDataFileMasks', '$zipDataFileMasks', '$sparkMetaDataFileMasks', '$sparkDataDataFileMasks')"
+      } else if (isTransferDataFile) {
+        for {
+          transferFileProcessor <- info"Going process .ZIP Transfer Data Files in Path: '${path.toAbsolutePath.toString}'" as {
+            implicitly[TransferFileProcessor[F]]
+          }
+          _ <- transferFileProcessor.processTransferFile(path)
+        } yield ()
+      } else info"Path: '$filePath' does not matches DataFile masks: ('$csvDataFileMasks', '$zipDataFileMasks', '$sparkMetaDataFileMasks', '$sparkDataDataFileMasks', '$transferDataFileMasks')"
     } yield ()
 }
 
 object DataFileProcessor {
-  def apply[F[_]: Monad: FileProcessor: Transformer: CsvFileProcessor: ZipFileProcessor: SparkFileProcessor](context: Context, logs: Logs[F, F]): Resource[F, DataFileProcessor[F]] =
+  def apply[F[_]: Monad:
+            FileProcessor:
+            Transformer:
+            CsvFileProcessor:
+            ZipFileProcessor:
+            SparkFileProcessor:
+            TransferFileProcessor](context: Context, logs: Logs[F, F]): Resource[F, DataFileProcessor[F]] =
     Resource.liftF(logs.forService[DataFileProcessor[F]].map(implicit l => new DataFileProcessor[F](context)))
 }

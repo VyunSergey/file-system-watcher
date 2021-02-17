@@ -22,14 +22,15 @@ class MarkerFileProcessor[F[_]: Monad: Logging: FileProcessor: DataFileProcessor
       zipFileMasks <- config.zipFileMasks[F]
       sparkMetaFileMasks <- config.sparkMetaFileMasks[F]
       sparkDataFileMasks <- config.sparkDataFileMasks[F]
+      transferFileMasks <- config.transferFileMasks[F]
       fileName = path.getFileName.toString
       filePath = path.toAbsolutePath.toString.replace("\\", "/")
-      (csvMarkerFileMasks, zipMarkerFileMasks) = (csvFileMasks.markerFile.r.regex, zipFileMasks.markerFile.r.regex)
+      (csvMarkerFileMasks, zipMarkerFileMasks, transferMarkerFileMasks) = (csvFileMasks.markerFile.r.regex, zipFileMasks.markerFile.r.regex, transferFileMasks.markerFile.r.regex)
       (sparkMetaMarkerFileMasks, sparkDataMarkerFileMasks) = (sparkMetaFileMasks.markerFile.r.regex, sparkDataFileMasks.markerFile.r.regex)
       (sparkMetaDataFileMasks, sparkDataDataFileMasks) = (sparkMetaFileMasks.dataFile.r.regex, sparkDataFileMasks.dataFile.r.regex)
-      (isCsvMarkerFile, isZipMarkerFile) = (filePath.matches(csvMarkerFileMasks), filePath.matches(zipMarkerFileMasks))
+      (isCsvMarkerFile, isZipMarkerFile, isTransferMarkerFile) = (filePath.matches(csvMarkerFileMasks), filePath.matches(zipMarkerFileMasks), filePath.matches(transferMarkerFileMasks))
       (isSparkMetaMarkerFile, isSparkDataMarkerFile) = (filePath.matches(sparkMetaMarkerFileMasks), filePath.matches(sparkDataMarkerFileMasks))
-      _ <- if (isCsvMarkerFile || isZipMarkerFile) {
+      _ <- if (isCsvMarkerFile || isZipMarkerFile || isTransferMarkerFile) {
         for {
           _ <- debug"Creating Data File Match regex"
           dataFileMatchRegex <- fileProcessor.clearFileName(fileName).map(nm => (nm + ".*").r)
@@ -121,7 +122,7 @@ class MarkerFileProcessor[F[_]: Monad: Logging: FileProcessor: DataFileProcessor
             } else info"No Spark Meta MarkerFile in Path: '${path.getParent.getParent.toAbsolutePath.toString}'"
           } yield ()
         } else ().pure[F]
-      } else info"Path: '$filePath' does not matches MarkerFile masks: ('$csvMarkerFileMasks', '$zipMarkerFileMasks', '$sparkMetaMarkerFileMasks', '$sparkDataMarkerFileMasks')"
+      } else info"Path: '$filePath' does not matches MarkerFile masks: ('$csvMarkerFileMasks', '$zipMarkerFileMasks', '$sparkMetaMarkerFileMasks', '$sparkDataMarkerFileMasks', '$transferMarkerFileMasks')"
     } yield ()
 }
 
