@@ -167,6 +167,19 @@ class FileProcessor[F[_]: Monad: Logging] {
     } yield ()
   }
 
+  def createFile(path: Path): F[Unit] = {
+    for {
+      isParentExist <- isExist(path.getParent)
+      _ <- if (!isParentExist) debug"Creating Parent File Path: '${path.getParent.toAbsolutePath.toString}'" as {
+        Try(JFiles.createDirectories(path.getParent)).getOrElse(path)
+      } else ().pure[F]
+      _ <- debug"Creating file '${path.getFileName.toString}' in Path: '${path.toAbsolutePath.toString}'" as {
+        Try(JFiles.createFile(path)).getOrElse(path)
+      }
+      _ <- debug"Finish creating file '${path.getFileName.toString}' in Path: '${path.toAbsolutePath.toString}'"
+    } yield ()
+  }
+
   def deleteFile(path: Path): F[Unit] = {
     for {
       _ <- debug"Deleting file '${path.getFileName.toString}' from Path: '${path.toAbsolutePath.toString}'"
