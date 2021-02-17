@@ -18,7 +18,8 @@ final case class Config(
                          path: Path,
                          productMask: String,
                          transferFileMask: String,
-                         transferArcMask: String,
+                         transferArchive: String,
+                         transferMarker: String,
                          csvMask: String,
                          zipMask: String,
                          fileMask: Map[String, FileMask],
@@ -28,6 +29,7 @@ final case class Config(
   def zipFileMasks[F[_]: Monad: Logging]: F[FileMask] = getFileMask("zip")
   def sparkMetaFileMasks[F[_]: Monad: Logging]: F[FileMask] = getFileMask("spark-meta")
   def sparkDataFileMasks[F[_]: Monad: Logging]: F[FileMask] = getFileMask("spark-data")
+  def transferFileMasks[F[_]: Monad: Logging]: F[FileMask] = getFileMask("transfer")
 
   def getFileMask[F[_]: Monad: Logging](key: String): F[FileMask] = {
     for {
@@ -138,7 +140,8 @@ object Config {
       r.addString("path", a.path.toAbsolutePath.toString, i) |+|
         r.addString("productMask", a.productMask, i) |+|
         r.addString("transferFileMask", a.transferFileMask, i) |+|
-        r.addString("transferArcMask", a.transferArcMask, i) |+|
+        r.addString("transferArchive", a.transferArchive, i) |+|
+        r.addString("transferMarker", a.transferMarker, i) |+|
         r.addString("csvMask", a.csvMask, i) |+|
         r.addString("zipMask", a.zipMask, i) |+|
         r.addString("fileMask", a.fileMask.view.mapValues(fileMaskLoggable.logShow).mkString("[", ",", "]"), i) |+|
@@ -149,7 +152,8 @@ object Config {
       s"Config(path = '${a.path.toAbsolutePath.toString}'" +
         s", productMask = '${a.productMask}'" +
         s", transferFileMask = '${a.transferFileMask}'" +
-        s", transferArcMask = '${a.transferArcMask}'" +
+        s", transferArchive = '${a.transferArchive}'" +
+        s", transferMarker = '${a.transferMarker}'" +
         s", csvMask = '${a.csvMask}'" +
         s", zipMask = '${a.zipMask}'" +
         s", fileMask = '${a.fileMask.view.mapValues(fileMaskLoggable.logShow).mkString("[", ",", "]")}'" +
