@@ -21,7 +21,7 @@ class CsvFileProcessor[F[_]: Monad: Logging: FileProcessor: Transformer](context
         (context.config, implicitly[FileProcessor[F]])
       }
       _ <- info"Finding Input Directory from Path: '${path.toAbsolutePath.toString}'"
-      inputPath <- fileProcessor.findParent(path, _.getFileName.toString, Some("in".r)).map(_.getOrElse(path))
+      inputPath <- fileProcessor.findParent(path, _.getFileName.toString, Some("in".r)).map(_.getOrElse(path.getParent))
       fileName <- fileProcessor.clearFileName(path.getFileName.toString)
       tempPath = inputPath.getParent.resolve(s"temp/$fileName")
       _ <- info"Copping Data Files from Path: ${inputPath.toAbsolutePath.toString} to Path: '${tempPath.toAbsolutePath.toString}'"
