@@ -46,6 +46,7 @@ class SparkFileProcessor[F[_]: Monad: Logging: FileProcessor](context: Context) 
       dataFiles = tempSubPaths.zip(isFileSubPaths).filter(_._2).map(_._1)
       _ <- fileProcessor.zipFiles(dataFiles, transferPath.resolve(config.transferArchive))
       _ <- info"Creating Marker Transfer File in Path: '${transferPath.toAbsolutePath.toString}'"
+      _ <- fileProcessor.deleteFile(transferPath.resolve(config.transferMarker))
       _ <- fileProcessor.createFile(transferPath.resolve(config.transferMarker))
     } yield ()
   }
