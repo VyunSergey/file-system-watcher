@@ -11,7 +11,7 @@ import tofu.syntax.logging._
 import tofu.syntax.monadic._
 
 import java.io.{BufferedReader, InputStreamReader}
-import java.nio.file.attribute.BasicFileAttributes
+import java.nio.file.attribute.{BasicFileAttributes, FileTime}
 import java.nio.file.{Path, StandardCopyOption, Files => JFiles}
 import java.util.{Comparator, Optional}
 import java.util.function.BiPredicate
@@ -87,6 +87,10 @@ class FileProcessor[F[_]: Monad: Logging] {
       isFile <- isFile(path)
       size <- if (isFile) fileSize(path) else directorySize(path)
     } yield size
+  }
+
+  def pathLastModifiedTime(path: Path): F[FileTime] = {
+    Try(JFiles.getLastModifiedTime(path)).toOption.getOrElse(FileTime.fromMillis(0)).pure[F]
   }
 
   def readFile(path: Path, sep: String = System.lineSeparator): F[Option[String]] = {
@@ -188,8 +192,12 @@ class FileProcessor[F[_]: Monad: Logging] {
 
   def zipFiles(paths: List[Path], zipPath: Path): F[Unit] = {
     for {
+      isParentExist <- isExist(zipPath.getParent)
+      _ <- if (!isParentExist) debug"Creating Parent Zip Path: '${zipPath.getParent.toAbsolutePath.toString}'" as {
+        Try(JFiles.createDirectories(zipPath.getParent)).getOrElse(zipPath)
+      } else ().pure[F]
       _ <- debug"Zipping files: ${paths.map(_.toFile.getName)} to archive '${zipPath.getFileName.toString}'" as {
-        new ZipFile(zipPath.toFile).addFiles(paths.map(_.toFile).asJava)
+        Try(new ZipFile(zipPath.toFile).addFiles(paths.map(_.toFile).asJava))
       }
       _ <- debug"Finish zipping files: ${paths.map(_.toFile.getName)} to archive '${zipPath.getFileName.toString}'"
     } yield ()
@@ -198,10 +206,14 @@ class FileProcessor[F[_]: Monad: Logging] {
   def zipFilesDivided(paths: List[Path], zipPath: Path,
                       size: Long = 100 * 1024 * 1024): F[Unit] = {
     for {
+      isParentExist <- isExist(zipPath.getParent)
+      _ <- if (!isParentExist) debug"Creating Parent Zip Path: '${zipPath.getParent.toAbsolutePath.toString}'" as {
+        Try(JFiles.createDirectories(zipPath.getParent)).getOrElse(zipPath)
+      } else ().pure[F]
       zipParameters <- debug"Creating zip parameters" as new ZipParameters()
       sizeMb = size / (1024.0 * 1024.0)
       _ <- debug"Zipping files: ${paths.map(_.toFile.getName)} to archive '${zipPath.getFileName.toString}' divided by size ${sizeMb}Mb" as {
-        new ZipFile(zipPath.toFile).createSplitZipFile(paths.map(_.toFile).asJava, zipParameters, true, size)
+        Try(new ZipFile(zipPath.toFile).createSplitZipFile(paths.map(_.toFile).asJava, zipParameters, true, size))
       }
       _ <- debug"Finish zipping files: ${paths.map(_.toFile.getName)} to archive '${zipPath.getFileName.toString}' divided by size ${sizeMb}Mb"
     } yield ()
@@ -209,8 +221,12 @@ class FileProcessor[F[_]: Monad: Logging] {
 
   def zipFilesProtected(paths: List[Path], zipPath: Path, password: String): F[Unit] = {
     for {
+      isParentExist <- isExist(zipPath.getParent)
+      _ <- if (!isParentExist) debug"Creating Parent Zip Path: '${zipPath.getParent.toAbsolutePath.toString}'" as {
+        Try(JFiles.createDirectories(zipPath.getParent)).getOrElse(zipPath)
+      } else ().pure[F]
       _ <- debug"Zipping files: ${paths.map(_.toFile.getName)} to protected archive '${zipPath.getFileName.toString}' with password: '$password'" as {
-        new ZipFile(zipPath.toFile, password.toCharArray).addFiles(paths.map(_.toFile).asJava)
+        Try(new ZipFile(zipPath.toFile, password.toCharArray).addFiles(paths.map(_.toFile).asJava))
       }
       _ <- debug"Finish zipping files: ${paths.map(_.toFile.getName)} to archive '${zipPath.getFileName.toString}'"
     } yield ()
@@ -219,6 +235,10 @@ class FileProcessor[F[_]: Monad: Logging] {
   def zipFilesProtectedDivided(paths: List[Path], zipPath: Path, password: String,
                                size: Long = 100 * 1024 * 1024): F[Unit] = {
     for {
+      isParentExist <- isExist(zipPath.getParent)
+      _ <- if (!isParentExist) debug"Creating Parent Zip Path: '${zipPath.getParent.toAbsolutePath.toString}'" as {
+        Try(JFiles.createDirectories(zipPath.getParent)).getOrElse(zipPath)
+      } else ().pure[F]
       zipParameters <- debug"Creating zip parameters" as {
         val zipParams = new ZipParameters()
         zipParams.setEncryptFiles(true)
@@ -227,7 +247,7 @@ class FileProcessor[F[_]: Monad: Logging] {
       }
       sizeMb = size / (1024.0 * 1024.0)
       _ <- debug"Zipping files: ${paths.map(_.toFile.getName)} to protected archive '${zipPath.getFileName.toString}' with password: '$password' divided by size ${sizeMb}Mb" as {
-        new ZipFile(zipPath.toFile, password.toCharArray).createSplitZipFile(paths.map(_.toFile).asJava, zipParameters, true, size)
+        Try(new ZipFile(zipPath.toFile, password.toCharArray).createSplitZipFile(paths.map(_.toFile).asJava, zipParameters, true, size))
       }
       _ <- debug"Finish zipping files: ${paths.map(_.toFile.getName)} to protected archive '${zipPath.getFileName.toString}' with password: '$password' divided by size ${sizeMb}Mb"
     } yield ()
@@ -235,8 +255,12 @@ class FileProcessor[F[_]: Monad: Logging] {
 
   def unzipFiles(zipPath: Path, path: Path): F[Unit] = {
     for {
+      isParentExist <- isExist(path.getParent)
+      _ <- if (!isParentExist) debug"Creating Parent Unzip Path: '${path.getParent.toAbsolutePath.toString}'" as {
+        Try(JFiles.createDirectories(path.getParent)).getOrElse(path)
+      } else ().pure[F]
       _ <- debug"Unzipping archive '${zipPath.getFileName.toString}' to Path: '${path.toAbsolutePath.toString}'" as {
-        new ZipFile(zipPath.toFile).extractAll(path.toAbsolutePath.toString)
+        Try(new ZipFile(zipPath.toFile).extractAll(path.toAbsolutePath.toString))
       }
       _ <- debug"Finish unzipping archive '${zipPath.getFileName.toString}' to Path: '${path.toAbsolutePath.toString}'"
     } yield ()
@@ -244,8 +268,12 @@ class FileProcessor[F[_]: Monad: Logging] {
 
   def unzipFilesProtected(zipPath: Path, path: Path, password: String): F[Unit] = {
     for {
+      isParentExist <- isExist(path.getParent)
+      _ <- if (!isParentExist) debug"Creating Parent Unzip Path: '${path.getParent.toAbsolutePath.toString}'" as {
+        Try(JFiles.createDirectories(path.getParent)).getOrElse(path)
+      } else ().pure[F]
       _ <- debug"Unzipping protected archive '${zipPath.getFileName.toString}' with password: '$password' to Path: '${path.toAbsolutePath.toString}'" as {
-        new ZipFile(zipPath.toFile, password.toCharArray).extractAll(path.toAbsolutePath.toString)
+        Try(new ZipFile(zipPath.toFile, password.toCharArray).extractAll(path.toAbsolutePath.toString))
       }
       _ <- debug"Finish unzipping protected archive '${zipPath.getFileName.toString}' with password: '$password' to Path: '${path.toAbsolutePath.toString}'"
     } yield ()
