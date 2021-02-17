@@ -22,6 +22,28 @@ lazy val organizationSettings = Seq(
   licenses := Seq(("Apache License, Version 2.0", url("http://www.apache.org/licenses/LICENSE-2.0.html")))
 )
 
+lazy val assemblySettings = Seq(
+  assemblyJarName in assembly := s"${name.value}-${scalaVersion.value}_${version.value}.jar",
+  mainClass in assembly := Some("com.vyunsergey.filesystemwatcher.Main"),
+  test in assembly := {},
+  assemblyShadeRules in assembly := Seq(
+    ShadeRule.rename("org.apache.http.**" -> "shaded.org.apache.http.@1").inAll
+  ),
+  assemblyMergeStrategy in assembly := {
+    case "application.conf" => MergeStrategy.concat
+    case "reference.conf" => MergeStrategy.concat
+    case PathList("META-INF", xs @ _*) => xs match {
+      case "MANIFEST.MF" :: Nil => MergeStrategy.discard
+      case "services" :: _ :: Nil => MergeStrategy.concat
+      case name :: Nil =>
+        if (name.endsWith(".RSA") || name.endsWith(".DSA") || name.endsWith(".SF")) MergeStrategy.discard
+        else MergeStrategy.first
+      case _ => MergeStrategy.first
+    }
+    case _ => MergeStrategy.first
+  }
+)
+
 lazy val commonLibraryDependencies = Seq(
   // Cats
   "org.typelevel"              %% "cats-core"               % catsVersion,
@@ -75,6 +97,7 @@ lazy val scalaCompilerOptions = Seq(
 
 lazy val root = (project in file(".")).settings(
   organizationSettings,
+  assemblySettings,
   libraryDependencies ++= commonLibraryDependencies,
   scalacOptions ++= scalaCompilerOptions,
   addCompilerPlugin("com.olegpy"   %% "better-monadic-for" % BetterMonadicForVersion)
