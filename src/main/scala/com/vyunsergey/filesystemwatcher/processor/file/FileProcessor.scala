@@ -13,8 +13,11 @@ import tofu.syntax.monadic._
 import java.io.{BufferedReader, InputStreamReader}
 import java.nio.file.attribute.{BasicFileAttributes, FileTime}
 import java.nio.file.{Path, StandardCopyOption, Files => JFiles}
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import java.util.{Comparator, Optional}
 import java.util.function.BiPredicate
+
 import scala.annotation.tailrec
 import scala.jdk.CollectionConverters._
 import scala.util.Try
@@ -61,6 +64,17 @@ class FileProcessor[F[_]: Monad: Logging] {
 
   def clearFileName(name: String): F[String] = {
     name.split("\\.").reverse.tail.reverse.mkString(".").pure[F]
+  }
+
+  def currentTime(): F[LocalDateTime] = {
+    LocalDateTime.now().pure[F]
+  }
+
+  def formattedTime(time: LocalDateTime, format: String): F[String] = {
+    for {
+      formatter <- debug"Creating formatter for LocalDateTime" as DateTimeFormatter.ofPattern(format)
+      timeStr <- debug"Format LocalDateTime" as time.format(formatter)
+    } yield timeStr
   }
 
   def isExist(path: Path): F[Boolean] =
