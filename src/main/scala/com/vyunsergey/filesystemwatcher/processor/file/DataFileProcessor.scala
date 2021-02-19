@@ -35,7 +35,7 @@ class DataFileProcessor[F[_]: Monad: Logging:
       (sparkMetaDataFileMasks, sparkDataDataFileMasks) = (sparkMetaFileMasks.dataFile.r.regex, sparkDataFileMasks.dataFile.r.regex)
       (isCsvDataFile, isZipDataFile, isTransferDataFile) = (filePath.matches(csvDataFileMasks), filePath.matches(zipDataFileMasks), filePath.matches(transferDataFileMasks))
       (isSparkMetaDataFile, isSparkDataDataFile) = (filePath.matches(sparkMetaDataFileMasks), filePath.matches(sparkDataDataFileMasks))
-      _ <- if (isCsvDataFile || isZipDataFile) {
+      _ <- if (isCsvDataFile || isZipDataFile || isSparkMetaDataFile || isSparkDataDataFile || isTransferDataFile) {
         for {
           _ <- info"Finding productId for Path: '${path.toAbsolutePath.toString}'"
           configPathOp <- fileProcessor.findParent(path, _.toAbsolutePath.toString.replace("\\", "/"), Some(config.productMask.r))
@@ -63,59 +63,57 @@ class DataFileProcessor[F[_]: Monad: Logging:
                         }
                         _ <- zipFileProcessor.processZipFile(path, transformerConfig)
                       } yield ()
+                    } else if (isSparkMetaDataFile) {
+                      for {
+                        sparkDataDataFileMatchRegex <- debug"Creating Spark Data DataFile Match regex" as sparkDataDataFileMasks.r
+                        _ <- info"Finding Path of Spark Meta MarkerFile in Path: '${path.getParent.getParent.toAbsolutePath.toString}'"
+                        dataSubPathOp <- fileProcessor.find(
+                          path.getParent.getParent,
+                          _.toAbsolutePath.toString.replace("\\", "/"),
+                          _.isRegularFile,
+                          Some(sparkDataDataFileMatchRegex),
+                          None
+                        )
+                        _ <- if (dataSubPathOp.nonEmpty) {
+                          for {
+                            sparkFileProcessor <- info"Going process .CSV Spark Data Files in Paths: (meta = '${path.toAbsolutePath.toString}', data = '${dataSubPathOp.get.toAbsolutePath.toString}')" as {
+                              implicitly[SparkFileProcessor[F]]
+                            }
+                            _ <- sparkFileProcessor.processSparkFile(path, dataSubPathOp.get)
+                          } yield ()
+                        } else error"No Spark Data DataFile in Path: '${path.getParent.getParent.toAbsolutePath.toString}'!"
+                      } yield ()
+                    } else if (isSparkDataDataFile) {
+                      for {
+                        sparkMetaDataFileMatchRegex <- debug"Creating Spark Data DataFile Match regex" as sparkMetaDataFileMasks.r
+                        _ <- info"Finding Path of Spark Meta MarkerFile in Path: '${path.getParent.getParent.toAbsolutePath.toString}'"
+                        dataSubPathOp <- fileProcessor.find(
+                          path.getParent.getParent,
+                          _.toAbsolutePath.toString.replace("\\", "/"),
+                          _.isRegularFile,
+                          Some(sparkMetaDataFileMatchRegex),
+                          None
+                        )
+                        _ <- if (dataSubPathOp.nonEmpty) {
+                          for {
+                            sparkFileProcessor <- info"Going process .CSV Spark Data Files in Paths: (meta = '${dataSubPathOp.get.toAbsolutePath.toString}', data = '${path.toAbsolutePath.toString}')" as {
+                              implicitly[SparkFileProcessor[F]]
+                            }
+                            _ <- sparkFileProcessor.processSparkFile(dataSubPathOp.get, path)
+                          } yield ()
+                        } else error"No Spark Meta DataFile in Path: '${path.getParent.getParent.toAbsolutePath.toString}'!"
+                      } yield ()
+                    } else if (isTransferDataFile) {
+                      for {
+                        transferFileProcessor <- info"Going process .ZIP Transfer Data Files in Path: '${path.toAbsolutePath.toString}'" as {
+                          implicitly[TransferFileProcessor[F]]
+                        }
+                        _ <- transferFileProcessor.processTransferFile(path, transformerConfig)
+                      } yield ()
                     } else ().pure[F]
                 }
               } yield ()
           }
-        } yield ()
-      } else if (isSparkMetaDataFile || isSparkDataDataFile) {
-        if (isSparkMetaDataFile) {
-          for {
-            sparkDataDataFileMatchRegex <- debug"Creating Spark Data DataFile Match regex" as sparkDataDataFileMasks.r
-            _ <- info"Finding Path of Spark Meta MarkerFile in Path: '${path.getParent.getParent.toAbsolutePath.toString}'"
-            dataSubPathOp <- fileProcessor.find(
-              path.getParent.getParent,
-              _.toAbsolutePath.toString.replace("\\", "/"),
-              _.isRegularFile,
-              Some(sparkDataDataFileMatchRegex),
-              None
-            )
-            _ <- if (dataSubPathOp.nonEmpty) {
-              for {
-                sparkFileProcessor <- info"Going process .CSV Spark Data Files in Paths: (meta = '${path.toAbsolutePath.toString}', data = '${dataSubPathOp.get.toAbsolutePath.toString}')" as {
-                  implicitly[SparkFileProcessor[F]]
-                }
-                _ <- sparkFileProcessor.processSparkFile(path, dataSubPathOp.get)
-              } yield ()
-            } else error"No Spark Data DataFile in Path: '${path.getParent.getParent.toAbsolutePath.toString}'!"
-          } yield ()
-        } else if (isSparkDataDataFile) {
-          for {
-            sparkMetaDataFileMatchRegex <- debug"Creating Spark Data DataFile Match regex" as sparkMetaDataFileMasks.r
-            _ <- info"Finding Path of Spark Meta MarkerFile in Path: '${path.getParent.getParent.toAbsolutePath.toString}'"
-            dataSubPathOp <- fileProcessor.find(
-              path.getParent.getParent,
-              _.toAbsolutePath.toString.replace("\\", "/"),
-              _.isRegularFile,
-              Some(sparkMetaDataFileMatchRegex),
-              None
-            )
-            _ <- if (dataSubPathOp.nonEmpty) {
-              for {
-                sparkFileProcessor <- info"Going process .CSV Spark Data Files in Paths: (meta = '${dataSubPathOp.get.toAbsolutePath.toString}', data = '${path.toAbsolutePath.toString}')" as {
-                  implicitly[SparkFileProcessor[F]]
-                }
-                _ <- sparkFileProcessor.processSparkFile(dataSubPathOp.get, path)
-              } yield ()
-            } else error"No Spark Meta DataFile in Path: '${path.getParent.getParent.toAbsolutePath.toString}'!"
-          } yield ()
-        } else ().pure[F]
-      } else if (isTransferDataFile) {
-        for {
-          transferFileProcessor <- info"Going process .ZIP Transfer Data Files in Path: '${path.toAbsolutePath.toString}'" as {
-            implicitly[TransferFileProcessor[F]]
-          }
-          _ <- transferFileProcessor.processTransferFile(path)
         } yield ()
       } else info"Path: '$filePath' does not matches DataFile masks: ('$csvDataFileMasks', '$zipDataFileMasks', '$sparkMetaDataFileMasks', '$sparkDataDataFileMasks', '$transferDataFileMasks')"
     } yield ()

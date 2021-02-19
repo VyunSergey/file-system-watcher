@@ -143,20 +143,22 @@ class FileProcessor[F[_]: Monad: Logging] {
   }
 
   def writeFile(data: String)(path: Path, sep: String = System.lineSeparator): F[Unit] = {
-    Try {
-      val bw = new BufferedWriter(new OutputStreamWriter(JFiles.newOutputStream(path)))
-      try {
-        val sb = new StringBuilder
-
-        data.split("\n").foreach { line =>
-          sb.append(line)
-          sb.append(sep)
+    for {
+      isParentExist <- isExist(path.getParent)
+      _ <- if (!isParentExist) debug"Creating Parent Writing Path: '${path.getParent.toAbsolutePath.toString}'" as {
+        Try(JFiles.createDirectories(path.getParent)).getOrElse(path)
+      } else ().pure[F]
+      _ <- debug"Writing data to Path: '${path.toAbsolutePath.toString}'" as {
+        Try {
+          val bw = new BufferedWriter(new OutputStreamWriter(JFiles.newOutputStream(path)))
+          try {
+            bw.write(data.split("\n").mkString(sep))
+          } finally {
+            bw.close()
+          }
         }
-        bw.write(sb.toString)
-      } finally {
-        bw.close()
       }
-    }.toOption.getOrElse(()).pure[F]
+    } yield ()
   }
 
   def writeJson[A: Encoder](data: A)(path: Path): F[Unit] = {

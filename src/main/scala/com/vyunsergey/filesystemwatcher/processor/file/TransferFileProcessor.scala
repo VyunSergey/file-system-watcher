@@ -3,7 +3,10 @@ package com.vyunsergey.filesystemwatcher.processor.file
 import cats.Monad
 import cats.effect.Resource
 import cats.syntax.traverse._
+import io.circe.syntax._
 import com.vyunsergey.filesystemwatcher.common.context.Context
+import com.vyunsergey.filesystemwatcher.common.status.ProcessingStatus
+import com.vyunsergey.filesystemwatcher.common.transform.TransformerConfig
 import tofu.logging.Logging
 import tofu.logging._
 import tofu.syntax.logging._
@@ -12,10 +15,10 @@ import tofu.syntax.monadic._
 import java.nio.file.Path
 
 class TransferFileProcessor[F[_]: Monad: Logging: FileProcessor](context: Context) {
-  def processTransferFile(path: Path): F[Unit] =
-    implicitly[FileProcessor[F]].process(path)(processFile)
+  def processTransferFile(path: Path, transformerConfig: TransformerConfig): F[Unit] =
+    implicitly[FileProcessor[F]].process(path)(processFile(_, transformerConfig))
 
-  def processFile(path: Path): F[Unit] = {
+  def processFile(path: Path, transformerConfig: TransformerConfig): F[Unit] = {
     for {
       (config, fileProcessor) <- info"Processing .ZIP Transfer Data Files in Path: '${path.toAbsolutePath.toString}'" as {
         (context.config, implicitly[FileProcessor[F]])
@@ -27,6 +30,7 @@ class TransferFileProcessor[F[_]: Monad: Logging: FileProcessor](context: Contex
       outputPath = productRootPath.resolve("out")
       tempOutPath = outputPath.resolve("temp")
       transferPath = productRootPath.resolve("transfer")
+      statusPath = productRootPath.resolve("status")
       backupPath = productRootPath.resolve("backup")
       backupPathIn = backupPath.resolve("in")
       backupPathOut = backupPath.resolve("out")
@@ -66,12 +70,25 @@ class TransferFileProcessor[F[_]: Monad: Logging: FileProcessor](context: Contex
       _ <- fileProcessor.deleteFiles(tempOutPath)
       _ <- if (tempDataFiles.nonEmpty && transferDataFiles.nonEmpty) {
         for {
+          inputFilesList <- tempDataFiles.map(_.getFileName.toString).mkString("['", "', '", "']").pure[F]
+          outputFilesPath <- transferDataFiles.map(_.toAbsolutePath.toString).mkString("['", "', '", "']").pure[F]
+          _ <- info"Saving processing Status to Path: '${statusPath.toAbsolutePath.toString}'"
+          _ <- fileProcessor.deleteFiles(statusPath)
+          _ <- fileProcessor.writeJson(ProcessingStatus.Success(message = s"Successfully processed files: $inputFilesList"))(statusPath.resolve("status.json"))
           _ <- info"[SUCCESS] ---------------------------------------------------------"
-          _ <- info"[SUCCESS] Finish processing Input Files: '${tempDataFiles.map(_.getFileName.toString).mkString("['", "', '", "']")}'"
-          _ <- info"[SUCCESS] Result: '${transferDataFiles.map(_.toAbsolutePath.toString).mkString("['", "', '", "']")}'"
+          _ <- info"[SUCCESS] Finish processing Input Files: $inputFilesList"
+          _ <- info"[SUCCESS] Result: $outputFilesPath"
           _ <- info"[SUCCESS] ---------------------------------------------------------"
         } yield ()
-      } else ().pure[F]
+      } else {
+        for {
+          inputFilesList <- tempDataFiles.map(_.getFileName.toString).mkString("['", "', '", "']").pure[F]
+          _ <- info"Saving processing Status to Path: '${statusPath.toAbsolutePath.toString}'"
+          _ <- fileProcessor.deleteFiles(statusPath)
+          _ <- fileProcessor.writeJson(ProcessingStatus.Failure(message = s"Error while processing input files: $inputFilesList. Check that 1) Files exist and 2) All files have the same CSV format: ${transformerConfig.reader.asJson.noSpaces} and 3) Total size of all files does not exceed 512Mb."))(statusPath.resolve("status.json"))
+          _ <- error"Can`t processing input files: $inputFilesList form Paths: (in = '${inputPath.toAbsolutePath.toString}', temp = '${tempPath.toAbsolutePath.toString}', transfer = '${transferPath.toAbsolutePath.toString}')"
+        } yield ()
+      }
     } yield ()
   }
 }
