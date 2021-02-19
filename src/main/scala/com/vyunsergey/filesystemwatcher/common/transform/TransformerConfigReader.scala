@@ -29,7 +29,7 @@ class TransformerConfigReader[F[_]: Monad: Logging: FileProcessor](context: Cont
       }
       readerConfigOp <- fileProcessor.readJson[TransformerReaderConfig](path)
       _ <- readerConfigOp match {
-        case Some(data) =>
+        case Some(_) =>
           info"Finish read file and parse data as JSON for Transformer Config form Path: '${path.toAbsolutePath.toString}'"
         case None =>
           error"Can`t read file and parse data as JSON for Transformer Config form Path: '${path.toAbsolutePath.toString}'"
