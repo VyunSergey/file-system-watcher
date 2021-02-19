@@ -107,6 +107,12 @@ class FileProcessor[F[_]: Monad: Logging] {
     Try(JFiles.getLastModifiedTime(path)).toOption.getOrElse(FileTime.fromMillis(0)).pure[F]
   }
 
+  def clearPathPartName(name: String): F[String] = {
+    name.trim.toLowerCase
+      .replaceAll("\\s", "_")
+      .replaceAll("[^\\w|\\d]", "").pure[F]
+  }
+
   def readFile(path: Path, sep: String = System.lineSeparator): F[Option[String]] = {
     Try {
       val br = new BufferedReader(new InputStreamReader(JFiles.newInputStream(path)))

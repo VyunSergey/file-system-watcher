@@ -51,6 +51,7 @@ object TransformerConfig {
   }
 
   final case class TransformerReaderConfig(
+                                            product_short_name: Option[String],
                                             encoding: Option[String],
                                             header: Option[String],
                                             delimiter: Option[String],
@@ -125,7 +126,8 @@ object TransformerConfig {
   implicit val transformerReaderConfigLoggable: DictLoggable[TransformerReaderConfig] =
     new DictLoggable[TransformerReaderConfig] {
       override def fields[I, V, R, S](a: TransformerReaderConfig, i: I)(implicit r: LogRenderer[I, V, R, S]): R = {
-        r.addString("encoding", a.encoding.getOrElse("<None>"), i) |+|
+        r.addString("product_short_name", a.product_short_name.getOrElse("<None>"), i) |+|
+          r.addString("encoding", a.encoding.getOrElse("<None>"), i) |+|
           r.addString("header", a.header.getOrElse("<None>"), i) |+|
           r.addString("delimiter", a.delimiter.getOrElse("<None>"), i) |+|
           r.addString("quote", a.quote.getOrElse("<None>"), i) |+|
@@ -134,7 +136,8 @@ object TransformerConfig {
       }
 
       override def logShow(a: TransformerReaderConfig): String =
-        s"TransformerReaderConfig(encoding = '${a.encoding}'" +
+        s"TransformerReaderConfig(product_short_name = '${a.product_short_name}'" +
+          s", encoding = '${a.encoding}'" +
           s", header = '${a.header}'" +
           s", delimiter = '${a.delimiter}'" +
           s", quote = '${a.quote}'" +

@@ -32,7 +32,10 @@ class ZipFileProcessor[F[_]: Monad: Logging: FileProcessor: Transformer](context
       _ <- info"Deleting Not Data Files: ${notDataFiles.map(_.getFileName.toString).mkString("[", ",", "]")} from Path: '${tempPath.toAbsolutePath.toString}'"
       _ <- notDataFiles.traverse(fileProcessor.deleteFiles)
       _ <- info"Creating Source Directory from Path: '${path.toAbsolutePath.toString}'"
-      sourceName = s"${transformerConfig.productId}__$fileName"
+      sourceProductId <- fileProcessor.clearPathPartName(transformerConfig.productId)
+      sourceProductShortName <- fileProcessor.clearPathPartName(transformerConfig.reader.product_short_name.getOrElse(""))
+      sourceFileName <- fileProcessor.clearPathPartName(fileName)
+      sourceName = s"${sourceProductId}___${sourceProductShortName}___$sourceFileName"
       sourcePath = tempPath.getParent.resolve(sourceName)
       _ <- fileProcessor.deleteFiles(sourcePath)
       _ <- fileProcessor.renameFile(tempPath, sourceName)
