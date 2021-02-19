@@ -3,6 +3,9 @@ package com.vyunsergey.filesystemwatcher.processor.file
 import cats.Monad
 import cats.effect.Resource
 import cats.syntax.traverse._
+import io.circe.{Decoder, Encoder}
+import io.circe.parser._
+import io.circe.syntax._
 import net.lingala.zip4j.ZipFile
 import net.lingala.zip4j.model.ZipParameters
 import net.lingala.zip4j.model.enums.EncryptionMethod
@@ -10,14 +13,13 @@ import tofu.logging._
 import tofu.syntax.logging._
 import tofu.syntax.monadic._
 
-import java.io.{BufferedReader, InputStreamReader}
+import java.io.{BufferedReader, BufferedWriter, InputStreamReader, OutputStreamWriter}
 import java.nio.file.attribute.{BasicFileAttributes, FileTime}
 import java.nio.file.{Path, StandardCopyOption, Files => JFiles}
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.{Comparator, Optional}
 import java.util.function.BiPredicate
-
 import scala.annotation.tailrec
 import scala.jdk.CollectionConverters._
 import scala.util.Try
@@ -130,6 +132,38 @@ class FileProcessor[F[_]: Monad: Logging] {
         br.close()
       }
     }.toOption.pure[F]
+  }
+
+  def readJson[A: Decoder](path: Path): F[Option[A]] = {
+    for {
+      data <- readFile(path)
+    } yield {
+      data.flatMap(decode[A](_).toOption)
+    }
+  }
+
+  def writeFile(data: String)(path: Path, sep: String = System.lineSeparator): F[Unit] = {
+    Try {
+      val bw = new BufferedWriter(new OutputStreamWriter(JFiles.newOutputStream(path)))
+      try {
+        val sb = new StringBuilder
+
+        data.split("\n").foreach { line =>
+          sb.append(line)
+          sb.append(sep)
+        }
+        bw.write(sb.toString)
+      } finally {
+        bw.close()
+      }
+    }.toOption.getOrElse(()).pure[F]
+  }
+
+  def writeJson[A: Encoder](data: A)(path: Path): F[Unit] = {
+    for {
+      text <- data.asJson.noSpaces.pure[F]
+      _ <- writeFile(text)(path)
+    } yield ()
   }
 
   def moveFile(srcPath: Path, tgtPath: Path): F[Unit] = {

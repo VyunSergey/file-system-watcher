@@ -5,7 +5,6 @@ import cats.effect.Resource
 import com.vyunsergey.filesystemwatcher.common.context.Context
 import com.vyunsergey.filesystemwatcher.common.transform.TransformerConfig.TransformerReaderConfig
 import com.vyunsergey.filesystemwatcher.processor.file.FileProcessor
-import io.circe.parser._
 import tofu.logging._
 import tofu.syntax.logging._
 import tofu.syntax.monadic._
@@ -28,20 +27,15 @@ class TransformerConfigReader[F[_]: Monad: Logging: FileProcessor](context: Cont
       fileProcessor <- info"Reading Transformer Config from Path: '${path.toAbsolutePath.toString}'" as {
         implicitly[FileProcessor[F]]
       }
-      dataOp <- fileProcessor.readFile(path)
-      readerConfig <- dataOp match {
+      readerConfigOp <- fileProcessor.readJson[TransformerReaderConfig](path)
+      _ <- readerConfigOp match {
         case Some(data) =>
-          for {
-            config <- decode[TransformerReaderConfig](data) match {
-              case Left(err) =>
-                error"Can`t parse data as JSON for Transformer Config form Path: '${path.toAbsolutePath.toString}'. ${err.getClass.getName}: ${err.getMessage}" as None
-              case Right(conf) => Some(conf).pure[F]
-            }
-          } yield config
-        case None => error"Can`t read file for Transformer Config form Path: '${path.toAbsolutePath.toString}'" as None
+          info"Finish read file and parse data as JSON for Transformer Config form Path: '${path.toAbsolutePath.toString}'"
+        case None =>
+          error"Can`t read file and parse data as JSON for Transformer Config form Path: '${path.toAbsolutePath.toString}'"
       }
-      _ <- readerConfig.map(c => info"$c").getOrElse(().pure[F])
-    } yield readerConfig
+      _ <- readerConfigOp.map(conf => info"$conf").getOrElse(().pure[F])
+    } yield readerConfigOp
   }
 }
 
