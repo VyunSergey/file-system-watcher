@@ -28,7 +28,14 @@ class ZipFileProcessor[F[_]: Monad: Logging: FileProcessor: Transformer](context
       _ <- fileProcessor.deleteFiles(tempPath.getParent)
       _ <- fileProcessor.unzipFiles(path, tempPath)
       subPaths <- fileProcessor.getSubPaths(tempPath)
-      notDataFiles = subPaths.filter(!_.getFileName.toString.matches(config.csvMask))
+      notDataFiles <- subPaths.traverse { path =>
+        (path.pure[F],
+          path.getFileName.toString.matches(config.csvMask).pure[F],
+          fileProcessor.isExist(path),
+          fileProcessor.isFile(path),
+          fileProcessor.pathSize(path).map(_ > 0)
+          ).tupled
+      }.map(_.filter(a => !(a._2 && a._3 && a._4 && a._5)).map(_._1))
       _ <- info"Deleting Not Data Files: ${notDataFiles.map(_.getFileName.toString).mkString("[", ",", "]")} from Path: '${tempPath.toAbsolutePath.toString}'"
       _ <- notDataFiles.traverse(fileProcessor.deleteFiles)
       _ <- info"Creating Source Directory from Path: '${path.toAbsolutePath.toString}'"
