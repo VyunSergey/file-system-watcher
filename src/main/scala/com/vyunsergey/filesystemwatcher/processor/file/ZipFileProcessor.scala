@@ -56,7 +56,9 @@ class ZipFileProcessor[F[_]: Monad: Logging: FileProcessor: Transformer](context
         config.transformer.command
       )
       _ <- info"Executing Transformer Command: $transformerCommand"
-      _ <- transformer.exec(transformerCommand, sourcePath, targetPath)
+      dataFilesSize <- fileProcessor.pathSize(sourcePath)
+      partitions = 1 + Math.min(Int.MaxValue, dataFilesSize / config.transformer.maxFileSize).toInt
+      _ <- transformer.exec(transformerCommand, sourcePath, targetPath, Some(partitions))
     } yield ()
   }
 }
