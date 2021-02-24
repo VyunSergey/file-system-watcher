@@ -2,6 +2,74 @@
     <statusListener class="ch.qos.logback.core.status.NopStatusListener"/>
     <shutdownHook class="ch.qos.logback.core.hook.DelayingShutdownHook"/>
 
+    <appender name="FILE_INFO" class="ch.qos.logback.classic.AsyncAppender">
+        <queueSize>1024</queueSize>
+        <discardingThreshold>0</discardingThreshold>
+        <appender-ref>
+            <appender class="ch.qos.logback.core.rolling.RollingFileAppender">
+                <file>F:/logs/logback/log_info.log</file>
+                <prudent>true</prudent>
+                <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+                    <!-- daily rollover -->
+                    <fileNamePattern>F:/logs/logback/log_info.%d{yyyy-MM-dd}.%i.log</fileNamePattern>
+                    <!-- each file should be at most 100MB, keep 30 days worth of history, but at most 5GB -->
+                    <maxFileSize>100MB</maxFileSize>
+                    <maxHistory>30</maxHistory>
+                    <totalSizeCap>5GB</totalSizeCap>
+                </rollingPolicy>
+                <filter class="ch.qos.logback.classic.filter.LevelFilter">
+                    <level>DEBUG</level>
+                    <onMatch>ACCEPT</onMatch>
+                </filter>
+                <filter class="ch.qos.logback.classic.filter.LevelFilter">
+                    <level>INFO</level>
+                    <onMatch>ACCEPT</onMatch>
+                </filter>
+                <filter class="ch.qos.logback.classic.filter.LevelFilter">
+                    <level>TRACE</level>
+                    <onMatch>ACCEPT</onMatch>
+                </filter>
+                <filter class="ch.qos.logback.classic.filter.LevelFilter">
+                    <level>WARN</level>
+                    <onMatch>DENY</onMatch>
+                </filter>
+                <filter class="ch.qos.logback.classic.filter.LevelFilter">
+                    <level>ERROR</level>
+                    <onMatch>DENY</onMatch>
+                </filter>
+                <encoder class="ch.qos.logback.core.encoder.LayoutWrappingEncoder">
+                    <layout class="tofu.logging.ELKLayout"/>
+                </encoder>
+            </appender>
+        </appender-ref>
+    </appender>
+
+    <appender name="FILE_ERROR" class="ch.qos.logback.classic.AsyncAppender">
+        <queueSize>1024</queueSize>
+        <discardingThreshold>0</discardingThreshold>
+        <appender-ref>
+            <appender class="ch.qos.logback.core.rolling.RollingFileAppender">
+                <file>F:/logs/logback/log_error.log</file>
+                <prudent>true</prudent>
+                <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+                    <!-- daily rollover -->
+                    <fileNamePattern>F:/logs/logback/log_error.%d{yyyy-MM-dd}.%i.log</fileNamePattern>
+                    <!-- each file should be at most 100MB, keep 30 days worth of history, but at most 5GB -->
+                    <maxFileSize>100MB</maxFileSize>
+                    <maxHistory>30</maxHistory>
+                    <totalSizeCap>5GB</totalSizeCap>
+                </rollingPolicy>
+                <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+                    <level>WARN</level>
+                    <onMatch>ACCEPT</onMatch>
+                </filter>
+                <encoder class="ch.qos.logback.core.encoder.LayoutWrappingEncoder">
+                    <layout class="tofu.logging.ELKLayout"/>
+                </encoder>
+            </appender>
+        </appender-ref>
+    </appender>
+
     <appender name="STDOUT" class="ch.qos.logback.classic.AsyncAppender">
         <queueSize>1024</queueSize>
         <discardingThreshold>0</discardingThreshold>
@@ -55,5 +123,7 @@
     <root level="INFO">
         <appender-ref ref="STDOUT"/>
         <appender-ref ref="STDERR"/>
+        <appender-ref ref="FILE_INFO"/>
+        <appender-ref ref="FILE_ERROR"/>
     </root>
 </configuration>
