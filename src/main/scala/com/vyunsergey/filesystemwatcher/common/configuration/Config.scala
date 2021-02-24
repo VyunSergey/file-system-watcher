@@ -45,7 +45,7 @@ final case class Config(
 }
 
 object Config {
-  val defaultPath: Path = Paths.get(new File(getClass.getResource("/application.conf").toURI).toURI)
+  lazy val defaultPath: Path = Paths.get(new File(getClass.getResource("/application.conf").toURI).toPath.toAbsolutePath.toString)
 
   final case class FileMask(dataFile: String, markerFile: String)
   final case class Transformer(mode: String, maxFileSize: Long, productPath: Path, jarPath: Path, command: String, options: Options)
