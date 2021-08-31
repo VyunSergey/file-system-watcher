@@ -23,13 +23,13 @@ lazy val organizationSettings = Seq(
 )
 
 lazy val assemblySettings = Seq(
-  assemblyJarName in assembly := s"${name.value}-${scalaVersion.value}_${version.value}.jar",
-  mainClass in assembly := Some("com.vyunsergey.filesystemwatcher.Main"),
-  test in assembly := {},
-  assemblyShadeRules in assembly := Seq(
+  assembly / assemblyJarName := s"${name.value}-${scalaVersion.value}_${version.value}.jar",
+  assembly / mainClass := Some("com.vyunsergey.filesystemwatcher.Main"),
+  assembly / test := {},
+  assembly / assemblyShadeRules := Seq(
     ShadeRule.rename("org.apache.http.**" -> "shaded.org.apache.http.@1").inAll
   ),
-  assemblyMergeStrategy in assembly := {
+  assemblyMergeStrategy / assembly := {
     case "application.conf" => MergeStrategy.concat
     case "reference.conf" => MergeStrategy.concat
     case PathList("META-INF", xs @ _*) => xs match {
