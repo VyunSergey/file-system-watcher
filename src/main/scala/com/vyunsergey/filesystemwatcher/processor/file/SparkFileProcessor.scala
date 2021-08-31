@@ -47,7 +47,7 @@ class SparkFileProcessor[F[_]: Monad: Logging: FileProcessor](context: Context) 
         ).tupled
       }.map(_.sortBy(_._2.toMillis).map(_._1))
       _ <- sortedDataFiles.zipWithIndex.traverse { case (path, ind) =>
-        fileProcessor.renameFile(path, config.transferFileMask.replaceFirst("<NUM>", ind.toString))
+        fileProcessor.renameFile(path, config.transferFileMask.replaceFirst("<NUM>", f"$ind%02d"))
       }
       _ <- info"Finding Output Directory from Path: '${tempPath.toAbsolutePath.toString}'"
       outputPath <- fileProcessor.findParent(tempPath, _.getFileName.toString, Some("out".r)).map(_.getOrElse(tempPath.getParent))
