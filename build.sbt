@@ -10,6 +10,7 @@ val PureConfigVersion       = "0.16.0"
 val ScallopVersion          = "4.0.3"
 val KindProjectorVersion    = "0.11.2"
 val zip4jVersion            = "2.9.0"
+val hashesVersion           = "4.1.0"
 val BetterMonadicForVersion = "0.3.1"
 val ScalaTestVersion        = "3.2.9"
 val ScalaCheckVersion       = "1.15.4"
@@ -75,6 +76,8 @@ lazy val commonLibraryDependencies = Seq(
   "org.typelevel"              %  s"kind-projector_$scalaVersion2_13" % KindProjectorVersion,
   // Zip4j
   "net.lingala.zip4j"          % "zip4j"                    % zip4jVersion,
+  // Avast Hashes
+  "com.avast.hashes"           %% "scala-hashes"            % hashesVersion,
   // ScalaTest
   "org.scalatest"              %% "scalatest"               % ScalaTestVersion % Test,
   // ScalaCheck
