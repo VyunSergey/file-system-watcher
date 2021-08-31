@@ -95,5 +95,5 @@ class TransferFileProcessor[F[_]: Monad: Logging: FileProcessor](context: Contex
 
 object TransferFileProcessor {
   def apply[F[_]: Monad: FileProcessor](context: Context, logs: Logs[F, F]): Resource[F, TransferFileProcessor[F]] =
-    Resource.liftF(logs.forService[TransferFileProcessor[F]].map(implicit l => new TransferFileProcessor[F](context)))
+    Resource.eval(logs.forService[TransferFileProcessor[F]].map(implicit l => new TransferFileProcessor[F](context)))
 }

@@ -68,5 +68,5 @@ class Transformer[F[_]: Monad: Logging: TransformerConfigReader](context: Contex
 
 object Transformer {
   def apply[F[_]: Monad: TransformerConfigReader](context: Context, logs: Logs[F, F]): Resource[F, Transformer[F]] =
-    Resource.liftF(logs.forService[Transformer[F]].map(implicit l => new Transformer[F](context)))
+    Resource.eval(logs.forService[Transformer[F]].map(implicit l => new Transformer[F](context)))
 }

@@ -70,5 +70,5 @@ class SparkFileProcessor[F[_]: Monad: Logging: FileProcessor](context: Context) 
 
 object SparkFileProcessor {
   def apply[F[_]: Monad: FileProcessor](context: Context, logs: Logs[F, F]): Resource[F, SparkFileProcessor[F]] =
-    Resource.liftF(logs.forService[SparkFileProcessor[F]].map(implicit l => new SparkFileProcessor[F](context)))
+    Resource.eval(logs.forService[SparkFileProcessor[F]].map(implicit l => new SparkFileProcessor[F](context)))
 }

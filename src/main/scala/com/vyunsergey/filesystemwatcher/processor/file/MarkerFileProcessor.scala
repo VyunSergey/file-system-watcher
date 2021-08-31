@@ -128,5 +128,5 @@ class MarkerFileProcessor[F[_]: Monad: Logging: FileProcessor: DataFileProcessor
 
 object MarkerFileProcessor {
   def apply[F[_]: Monad: FileProcessor: DataFileProcessor](context: Context, logs: Logs[F, F]): Resource[F, MarkerFileProcessor[F]] =
-    Resource.liftF(logs.forService[MarkerFileProcessor[F]].map(implicit l => new MarkerFileProcessor[F](context)))
+    Resource.eval(logs.forService[MarkerFileProcessor[F]].map(implicit l => new MarkerFileProcessor[F](context)))
 }

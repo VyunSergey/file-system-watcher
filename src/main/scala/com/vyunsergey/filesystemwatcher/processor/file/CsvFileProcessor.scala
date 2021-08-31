@@ -65,5 +65,5 @@ class CsvFileProcessor[F[_]: Monad: Logging: FileProcessor: Transformer](context
 
 object CsvFileProcessor {
   def apply[F[_]: Monad: FileProcessor: Transformer](context: Context, logs: Logs[F, F]): Resource[F, CsvFileProcessor[F]] =
-    Resource.liftF(logs.forService[CsvFileProcessor[F]].map(implicit l => new CsvFileProcessor[F](context)))
+    Resource.eval(logs.forService[CsvFileProcessor[F]].map(implicit l => new CsvFileProcessor[F](context)))
 }

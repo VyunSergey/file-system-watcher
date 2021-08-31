@@ -65,5 +65,5 @@ class ZipFileProcessor[F[_]: Monad: Logging: FileProcessor: Transformer](context
 
 object ZipFileProcessor {
   def apply[F[_]: Monad: FileProcessor: Transformer](context: Context, logs: Logs[F, F]): Resource[F, ZipFileProcessor[F]] =
-    Resource.liftF(logs.forService[ZipFileProcessor[F]].map(implicit l => new ZipFileProcessor[F](context)))
+    Resource.eval(logs.forService[ZipFileProcessor[F]].map(implicit l => new ZipFileProcessor[F](context)))
 }

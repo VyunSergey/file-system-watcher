@@ -415,5 +415,5 @@ class FileProcessor[F[_]: Monad: Logging] {
 
 object FileProcessor {
   def apply[F[_]: Monad](logs: Logs[F, F]): Resource[F, FileProcessor[F]] =
-    Resource.liftF(logs.forService[FileProcessor[F]].map(implicit l => new FileProcessor[F]))
+    Resource.eval(logs.forService[FileProcessor[F]].map(implicit l => new FileProcessor[F]))
 }

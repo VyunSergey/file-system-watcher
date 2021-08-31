@@ -127,5 +127,5 @@ object DataFileProcessor {
             ZipFileProcessor:
             SparkFileProcessor:
             TransferFileProcessor](context: Context, logs: Logs[F, F]): Resource[F, DataFileProcessor[F]] =
-    Resource.liftF(logs.forService[DataFileProcessor[F]].map(implicit l => new DataFileProcessor[F](context)))
+    Resource.eval(logs.forService[DataFileProcessor[F]].map(implicit l => new DataFileProcessor[F](context)))
 }
