@@ -67,7 +67,7 @@ class FileProcessor[F[_]: Monad: Logging] {
     } yield ()
 
   def clearFileName(name: String): F[String] = {
-    name.split("\\.").reverse.tail.reverse.mkString(".").pure[F]
+    name.split("\\.").init.mkString(".").pure[F]
   }
 
   def currentTime(): F[LocalDateTime] = {
