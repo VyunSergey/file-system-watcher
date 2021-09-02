@@ -16,6 +16,7 @@ import scala.util.{Failure, Success, Try}
 
 final case class Config(
                          path: Path,
+                         sdexPath: Path,
                          productMask: String,
                          transferFileMask: String,
                          transferArchive: String,
@@ -141,6 +142,7 @@ object Config {
   implicit val configLoggable: DictLoggable[Config] = new DictLoggable[Config] {
     override def fields[I, V, R, S](a: Config, i: I)(implicit r: LogRenderer[I, V, R, S]): R = {
       r.addString("path", a.path.toAbsolutePath.toString, i) |+|
+        r.addString("sdexPath", a.sdexPath.toAbsolutePath.toString, i) |+|
         r.addString("productMask", a.productMask, i) |+|
         r.addString("transferFileMask", a.transferFileMask, i) |+|
         r.addString("transferArchive", a.transferArchive, i) |+|
@@ -154,6 +156,7 @@ object Config {
 
     override def logShow(a: Config): String =
       s"Config(path = '${a.path.toAbsolutePath.toString}'" +
+        s", sdexPath = '${a.sdexPath.toAbsolutePath.toString}'" +
         s", productMask = '${a.productMask}'" +
         s", transferFileMask = '${a.transferFileMask}'" +
         s", transferArchive = '${a.transferArchive}'" +

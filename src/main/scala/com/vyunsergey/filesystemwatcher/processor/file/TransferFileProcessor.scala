@@ -1,7 +1,7 @@
 package com.vyunsergey.filesystemwatcher.processor.file
 
 import cats.Monad
-import cats.effect.Resource
+import cats.effect.{Resource, Timer}
 import cats.syntax.traverse._
 import io.circe.syntax._
 import com.vyunsergey.filesystemwatcher.common.context.Context
@@ -13,8 +13,9 @@ import tofu.syntax.logging._
 import tofu.syntax.monadic._
 
 import java.nio.file.Path
+import scala.concurrent.duration._
 
-class TransferFileProcessor[F[_]: Monad: Logging: FileProcessor](context: Context) {
+class TransferFileProcessor[F[_]: Monad: Timer: Logging: FileProcessor](context: Context) {
   def processTransferFile(path: Path, transformerConfig: TransformerConfig): F[Unit] =
     implicitly[FileProcessor[F]].process(path)(processFile(_, transformerConfig))
 
@@ -30,6 +31,7 @@ class TransferFileProcessor[F[_]: Monad: Logging: FileProcessor](context: Contex
       outputPath = productRootPath.resolve("out")
       tempOutPath = outputPath.resolve("temp")
       transferPath = productRootPath.resolve("transfer")
+      sdexPath = config.sdexPath
       statusPath = productRootPath.resolve("status")
       backupPath = productRootPath.resolve("backup")
       backupPathIn = backupPath.resolve("in")
@@ -49,8 +51,12 @@ class TransferFileProcessor[F[_]: Monad: Logging: FileProcessor](context: Contex
         } yield ()
       } else ().pure[F]
       _ <- info"Backup Output data files in Transfer Path: '${transferPath.toAbsolutePath.toString}'"
-      transferSubPaths <- fileProcessor.getSubPaths(transferPath)
-      transferDataFiles = transferSubPaths.filter(_.getFileName.toString.matches(config.zipMask))
+      transferFiles <- List(config.transferArchive, config.transferHash, config.transferMarker)
+        .map(transferPath.resolve)
+        .traverse(file => fileProcessor.isExist(file)
+        .map(flag => (file, flag)))
+        .map(_.filter(_._2).map(_._1))
+      transferDataFiles = transferFiles.filter(_.getFileName.toString == config.transferArchive)
       _ <- if (transferDataFiles.nonEmpty) {
         for {
           _ <- info"Clearing Old Backups in Out Path: '${backupPathOut.toAbsolutePath.toString}'"
@@ -68,7 +74,10 @@ class TransferFileProcessor[F[_]: Monad: Logging: FileProcessor](context: Contex
       _ <- info"Deleting Temp Directories: (temp = '${tempPath.toAbsolutePath.toString}', outTemp = '${tempOutPath.toAbsolutePath.toString}')"
       _ <- fileProcessor.deleteFiles(tempPath)
       _ <- fileProcessor.deleteFiles(tempOutPath)
-      _ <- if (tempDataFiles.nonEmpty && transferDataFiles.nonEmpty) {
+      _ <- info"Copping Transfer Files to SDEX from Path '${transferPath.toAbsolutePath.toString}' to Path '${sdexPath.toAbsolutePath.toString}'"
+      _ <- fileProcessor.deleteFiles(sdexPath)
+      _ <- transferFiles.traverse(file => fileProcessor.copyFile(file, sdexPath.resolve(file.getFileName)) >> Timer[F].sleep(5.seconds))
+      _ <- if (tempDataFiles.nonEmpty && transferDataFiles.nonEmpty && transferFiles.length >= 3) {
         for {
           inputFilesList <- tempDataFiles.map(_.getFileName.toString).mkString("['", "', '", "']").pure[F]
           outputFilesPath <- transferDataFiles.map(_.toAbsolutePath.toString).mkString("['", "', '", "']").pure[F]
@@ -94,6 +103,6 @@ class TransferFileProcessor[F[_]: Monad: Logging: FileProcessor](context: Contex
 }
 
 object TransferFileProcessor {
-  def apply[F[_]: Monad: FileProcessor](context: Context, logs: Logs[F, F]): Resource[F, TransferFileProcessor[F]] =
+  def apply[F[_]: Monad: Timer: FileProcessor](context: Context, logs: Logs[F, F]): Resource[F, TransferFileProcessor[F]] =
     Resource.eval(logs.forService[TransferFileProcessor[F]].map(implicit l => new TransferFileProcessor[F](context)))
 }
