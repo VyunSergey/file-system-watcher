@@ -11,18 +11,18 @@ import cats.effect.Resource
 class ContextReader[F[_]: Monad: Logging] {
   def read(arguments: Arguments, config: Config): Resource[F, Context] = {
     for {
-      context <- Resource.liftF(
+      context <- Resource.eval(
         info"Reading Context" as {
           Context(arguments.configPath.getOrElse(Config.defaultPath), config)
         }
       )
-      _ <- Resource.liftF(info"$context")
+      _ <- Resource.eval(info"$context")
     } yield context
   }
 }
 
 object ContextReader {
   def apply[F[_]: Monad](logs: Logs[F, F]): Resource[F, ContextReader[F]] = {
-    Resource.liftF(logs.forService[ContextReader[F]].map(implicit l => new ContextReader[F]))
+    Resource.eval(logs.forService[ContextReader[F]].map(implicit l => new ContextReader[F]))
   }
 }

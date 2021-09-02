@@ -16,9 +16,11 @@ import scala.util.{Failure, Success, Try}
 
 final case class Config(
                          path: Path,
+                         sdexPath: Path,
                          productMask: String,
                          transferFileMask: String,
                          transferArchive: String,
+                         transferHash: String,
                          transferMarker: String,
                          csvMask: String,
                          zipMask: String,
@@ -48,7 +50,7 @@ object Config {
   lazy val defaultPath: Path = Paths.get(new File(getClass.getResource("/application.conf").toURI).toPath.toAbsolutePath.toString)
 
   final case class FileMask(dataFile: String, markerFile: String)
-  final case class Transformer(mode: String, maxFileSize: Long, productPath: Path, jarPath: Path, command: String, options: Options)
+  final case class Transformer(mode: String, maxFilesCount: Int, maxFileSize: Long, productPath: Path, jarPath: Path, command: String, options: Options)
   final case class Options(spark: SparkOptions, writer: WriterOptions)
   final case class SparkOptions(spark: List[String])
   final case class WriterOptions(
@@ -119,6 +121,7 @@ object Config {
   implicit val transformerLoggable: DictLoggable[Transformer] = new DictLoggable[Transformer] {
     override def fields[I, V, R, S](a: Transformer, i: I)(implicit r: LogRenderer[I, V, R, S]): R = {
       r.addString("mode", a.mode, i) |+|
+        r.addString("maxFilesCount", a.maxFilesCount.toString, i) |+|
         r.addString("maxFileSize", a.maxFileSize.toString, i) |+|
         r.addString("productPath", a.productPath.toAbsolutePath.toString, i) |+|
         r.addString("jarPath", a.jarPath.toAbsolutePath.toString, i) |+|
@@ -128,6 +131,7 @@ object Config {
 
     override def logShow(a: Transformer): String =
       s"Transformer(mode = '${a.mode}'" +
+        s", maxFilesCount = '${a.maxFilesCount.toString}'" +
         s", maxFileSize = '${a.maxFileSize.toString}'" +
         s", productPath = '${a.productPath.toAbsolutePath.toString}'" +
         s", jarPath = '${a.jarPath.toAbsolutePath.toString}'" +
@@ -138,9 +142,11 @@ object Config {
   implicit val configLoggable: DictLoggable[Config] = new DictLoggable[Config] {
     override def fields[I, V, R, S](a: Config, i: I)(implicit r: LogRenderer[I, V, R, S]): R = {
       r.addString("path", a.path.toAbsolutePath.toString, i) |+|
+        r.addString("sdexPath", a.sdexPath.toAbsolutePath.toString, i) |+|
         r.addString("productMask", a.productMask, i) |+|
         r.addString("transferFileMask", a.transferFileMask, i) |+|
         r.addString("transferArchive", a.transferArchive, i) |+|
+        r.addString("transferHash", a.transferHash, i) |+|
         r.addString("transferMarker", a.transferMarker, i) |+|
         r.addString("csvMask", a.csvMask, i) |+|
         r.addString("zipMask", a.zipMask, i) |+|
@@ -150,9 +156,11 @@ object Config {
 
     override def logShow(a: Config): String =
       s"Config(path = '${a.path.toAbsolutePath.toString}'" +
+        s", sdexPath = '${a.sdexPath.toAbsolutePath.toString}'" +
         s", productMask = '${a.productMask}'" +
         s", transferFileMask = '${a.transferFileMask}'" +
         s", transferArchive = '${a.transferArchive}'" +
+        s", transferHash = '${a.transferHash}'" +
         s", transferMarker = '${a.transferMarker}'" +
         s", csvMask = '${a.csvMask}'" +
         s", zipMask = '${a.zipMask}'" +

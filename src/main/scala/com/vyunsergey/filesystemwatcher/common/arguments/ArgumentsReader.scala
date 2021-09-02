@@ -9,7 +9,7 @@ import cats.effect.Resource
 class ArgumentsReader[F[_]: Monad: Logging] {
   def read(args: Seq[String]): Resource[F, Arguments] = {
     for {
-      arguments <- Resource.liftF(
+      arguments <- Resource.eval(
         info"Reading Arguments" as {
           val argumentsOps: ArgumentsOps = new ArgumentsOps(args)
           Arguments(
@@ -18,13 +18,13 @@ class ArgumentsReader[F[_]: Monad: Logging] {
           )
         }
       )
-      _ <- Resource.liftF(info"$arguments")
+      _ <- Resource.eval(info"$arguments")
     } yield arguments
   }
 }
 
 object ArgumentsReader {
   def apply[F[_]: Monad](logs: Logs[F, F]): Resource[F, ArgumentsReader[F]] = {
-    Resource.liftF(logs.forService[ArgumentsReader[F]].map(implicit l => new ArgumentsReader[F]))
+    Resource.eval(logs.forService[ArgumentsReader[F]].map(implicit l => new ArgumentsReader[F]))
   }
 }

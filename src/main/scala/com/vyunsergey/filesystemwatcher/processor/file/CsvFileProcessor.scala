@@ -57,7 +57,7 @@ class CsvFileProcessor[F[_]: Monad: Logging: FileProcessor: Transformer](context
       )
       _ <- info"Executing Transformer Command: $transformerCommand"
       dataFilesSize <- fileProcessor.pathSize(sourcePath)
-      partitions = 1 + Math.min(Int.MaxValue, dataFilesSize / config.transformer.maxFileSize).toInt
+      partitions = 1 + Math.min(config.transformer.maxFilesCount - 1, dataFilesSize / config.transformer.maxFileSize).toInt
       _ <- transformer.exec(transformerCommand, sourcePath, targetPath, Some(partitions))
     } yield ()
   }
@@ -65,5 +65,5 @@ class CsvFileProcessor[F[_]: Monad: Logging: FileProcessor: Transformer](context
 
 object CsvFileProcessor {
   def apply[F[_]: Monad: FileProcessor: Transformer](context: Context, logs: Logs[F, F]): Resource[F, CsvFileProcessor[F]] =
-    Resource.liftF(logs.forService[CsvFileProcessor[F]].map(implicit l => new CsvFileProcessor[F](context)))
+    Resource.eval(logs.forService[CsvFileProcessor[F]].map(implicit l => new CsvFileProcessor[F](context)))
 }

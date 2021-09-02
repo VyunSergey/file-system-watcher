@@ -15,13 +15,13 @@ class FileSystemWatcher[F[_]: ConcurrentEffect: ContextShift: Logging](blocker: 
   def watch(path: Path): Resource[F, Stream[F, Watcher.Event]] = {
     for {
       watcher <- file.watcher(blocker).flatMap { watcher =>
-        Resource.liftF(
+        Resource.eval(
           info"Watching Path '${path.toAbsolutePath.toString}'" as {
             watcher
           }
         )
       }
-      _ <- Resource.liftF(watcher.watch(path))
+      _ <- Resource.eval(watcher.watch(path))
     } yield watcher.events()
   }
 
@@ -59,6 +59,6 @@ class FileSystemWatcher[F[_]: ConcurrentEffect: ContextShift: Logging](blocker: 
 
 object FileSystemWatcher {
   def apply[F[_]: ConcurrentEffect: ContextShift](blocker: Blocker, logs: Logs[F, F]): Resource[F, FileSystemWatcher[F]] = {
-    Resource.liftF(logs.forService[FileSystemWatcher[F]].map(implicit l => new FileSystemWatcher[F](blocker)))
+    Resource.eval(logs.forService[FileSystemWatcher[F]].map(implicit l => new FileSystemWatcher[F](blocker)))
   }
 }

@@ -3,6 +3,7 @@ package com.vyunsergey.filesystemwatcher.processor.file
 import cats.Monad
 import cats.effect.Resource
 import cats.syntax.traverse._
+import com.avast.scala.hashes.{bytes2base64, bytes2hex}
 import io.circe.{Decoder, Encoder}
 import io.circe.parser._
 import io.circe.syntax._
@@ -16,6 +17,7 @@ import tofu.syntax.monadic._
 import java.io.{BufferedReader, BufferedWriter, InputStreamReader, OutputStreamWriter}
 import java.nio.file.attribute.{BasicFileAttributes, FileTime}
 import java.nio.file.{Path, StandardCopyOption, Files => JFiles}
+import java.security.MessageDigest
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.{Comparator, Optional}
@@ -113,6 +115,12 @@ class FileProcessor[F[_]: Monad: Logging] {
     name.trim.toLowerCase
       .replaceAll("\\s", "_")
       .replaceAll("[^\\w|\\d]", "").pure[F]
+  }
+
+  def readFileAsBytes(path: Path): F[Option[Array[Byte]]] = {
+    Try {
+      JFiles.readAllBytes(path)
+    }.toOption.pure[F]
   }
 
   def readFile(path: Path, sep: String = System.lineSeparator): F[Option[String]] = {
@@ -257,6 +265,22 @@ class FileProcessor[F[_]: Monad: Logging] {
       } else ().pure[F]
       _ <- debug"Finish deleting all files from Path: '${path.toAbsolutePath.toString}'"
     } yield ()
+  }
+
+  def md5HashFile(path: Path, stringType: String = "HEX"): F[Option[String]] = {
+    for {
+      bytesOp <- readFileAsBytes(path)
+    } yield {
+      val md5 = MessageDigest.getInstance("MD5")
+      bytesOp
+        .map(md5.digest)
+        .map { bytes =>
+          stringType.trim.toUpperCase match {
+            case "HEX" => bytes2hex(bytes)
+            case "BASE64" => bytes2base64(bytes)
+          }
+        }
+    }
   }
 
   def zipFiles(paths: List[Path], zipPath: Path): F[Unit] = {
@@ -415,5 +439,5 @@ class FileProcessor[F[_]: Monad: Logging] {
 
 object FileProcessor {
   def apply[F[_]: Monad](logs: Logs[F, F]): Resource[F, FileProcessor[F]] =
-    Resource.liftF(logs.forService[FileProcessor[F]].map(implicit l => new FileProcessor[F]))
+    Resource.eval(logs.forService[FileProcessor[F]].map(implicit l => new FileProcessor[F]))
 }

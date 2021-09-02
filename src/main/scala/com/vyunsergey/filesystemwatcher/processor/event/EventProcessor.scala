@@ -33,7 +33,7 @@ class EventProcessor[F[_]: Monad: Logging: MarkerFileProcessor] {
 
 object EventProcessor {
   def apply[F[_]: Monad: MarkerFileProcessor](logs: Logs[F, F]): Resource[F, EventProcessor[F]] =
-    Resource.liftF(logs.forService[EventProcessor[F]].map(implicit l => new EventProcessor[F]))
+    Resource.eval(logs.forService[EventProcessor[F]].map(implicit l => new EventProcessor[F]))
 
   implicit val argumentsLoggable: DictLoggable[Event] = new DictLoggable[Event] {
     override def fields[I, V, R, S](a: Event, i: I)(implicit r: LogRenderer[I, V, R, S]): R = (a: @unchecked) match {

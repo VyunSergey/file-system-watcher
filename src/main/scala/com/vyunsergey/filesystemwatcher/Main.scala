@@ -39,7 +39,7 @@ object Main extends IOApp {
       implicit0(markerFileProcessor: MarkerFileProcessor[IO]) <- MarkerFileProcessor[IO](context, syncLogs)
       eventProcessor <- EventProcessor[IO](syncLogs)
       stream <- watcher.watch(context.config.path)
-      processedStream <- Resource.liftF(stream.evalMap(event => eventProcessor.process(event)).pure[IO])
+      processedStream <- Resource.eval(stream.evalMap(event => eventProcessor.process(event)).pure[IO])
     } yield {
       processedStream
     }).use(_.compile.drain.as(ExitCode.Success))

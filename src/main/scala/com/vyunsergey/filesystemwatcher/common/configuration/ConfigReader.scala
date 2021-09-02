@@ -12,17 +12,17 @@ import java.nio.file.Path
 class ConfigReader[F[_]: Monad: Logging] {
   def read(path: Path): Resource[F, Config] = {
     for {
-      config <- Resource.liftF(
+      config <- Resource.eval(
         info"Reading Config" as {
           ConfigSource.file(path).withFallback(ConfigSource.default).loadOrThrow[Config]
         }
       )
-      _ <- Resource.liftF(info"$config")
+      _ <- Resource.eval(info"$config")
     } yield config
   }
 }
 
 object ConfigReader {
   def apply[F[_]: Monad](logs: Logs[F, F]): Resource[F, ConfigReader[F]] =
-    Resource.liftF(logs.forService[ConfigReader[F]].map(implicit l => new ConfigReader[F]))
+    Resource.eval(logs.forService[ConfigReader[F]].map(implicit l => new ConfigReader[F]))
 }

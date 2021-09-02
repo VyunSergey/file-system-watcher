@@ -47,7 +47,7 @@ class SparkFileProcessor[F[_]: Monad: Logging: FileProcessor](context: Context) 
         ).tupled
       }.map(_.sortBy(_._2.toMillis).map(_._1))
       _ <- sortedDataFiles.zipWithIndex.traverse { case (path, ind) =>
-        fileProcessor.renameFile(path, config.transferFileMask.replaceFirst("<NUM>", ind.toString))
+        fileProcessor.renameFile(path, config.transferFileMask.replaceFirst("<NUM>", f"$ind%02d"))
       }
       _ <- info"Finding Output Directory from Path: '${tempPath.toAbsolutePath.toString}'"
       outputPath <- fileProcessor.findParent(tempPath, _.getFileName.toString, Some("out".r)).map(_.getOrElse(tempPath.getParent))
@@ -61,6 +61,13 @@ class SparkFileProcessor[F[_]: Monad: Logging: FileProcessor](context: Context) 
       }.map(_.filter(_._2).map(_._1))
       _ <- fileProcessor.deleteFiles(transferPath)
       _ <- fileProcessor.zipFiles(resDataFiles, transferPath.resolve(config.transferArchive))
+      _ <- info"Creating MD5 Hash Sum File in Path: '${transferPath.toAbsolutePath.toString}'"
+      _ <- fileProcessor.deleteFile(transferPath.resolve(config.transferHash))
+      hashOp <- fileProcessor.md5HashFile(transferPath.resolve(config.transferArchive))
+      _ <- hashOp match {
+        case None => error"Can`t create MD5 Hash Sum File in Path: '${transferPath.toAbsolutePath.toString}'"
+        case Some(hash) => fileProcessor.writeFile(hash)(transferPath.resolve(config.transferHash))
+      }
       _ <- info"Creating Marker Transfer File in Path: '${transferPath.toAbsolutePath.toString}'"
       _ <- fileProcessor.deleteFile(transferPath.resolve(config.transferMarker))
       _ <- fileProcessor.createFile(transferPath.resolve(config.transferMarker))
@@ -70,5 +77,5 @@ class SparkFileProcessor[F[_]: Monad: Logging: FileProcessor](context: Context) 
 
 object SparkFileProcessor {
   def apply[F[_]: Monad: FileProcessor](context: Context, logs: Logs[F, F]): Resource[F, SparkFileProcessor[F]] =
-    Resource.liftF(logs.forService[SparkFileProcessor[F]].map(implicit l => new SparkFileProcessor[F](context)))
+    Resource.eval(logs.forService[SparkFileProcessor[F]].map(implicit l => new SparkFileProcessor[F](context)))
 }

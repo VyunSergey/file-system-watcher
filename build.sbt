@@ -1,19 +1,20 @@
 lazy val scalaVersion2_13   = "2.13.4"
 scalaVersion := scalaVersion2_13
-val catsVersion             = "2.3.1"
-val catsEffectVersion       = "2.3.1"
-val circeVersion            = "0.13.0"
-val fs2Version              = "2.5.0"
-val fs2IoVersion            = "2.5.0"
-val tofuVersion             = "0.9.0"
-val PureConfigVersion       = "0.12.0"
-val ScallopVersion          = "4.0.0"
+val catsVersion             = "2.6.1"
+val catsEffectVersion       = "2.5.3"
+val circeVersion            = "0.14.1"
+val fs2Version              = "2.5.9"
+val fs2IoVersion            = "2.5.9"
+val tofuVersion             = "0.9.2"
+val PureConfigVersion       = "0.16.0"
+val ScallopVersion          = "4.0.3"
 val KindProjectorVersion    = "0.11.2"
-val zip4jVersion            = "2.7.0"
+val zip4jVersion            = "2.9.0"
+val hashesVersion           = "4.1.0"
 val BetterMonadicForVersion = "0.3.1"
-val ScalaTestVersion        = "3.2.2"
-val ScalaCheckVersion       = "1.14.1"
-val ScalaTestPlusVersion    = "3.2.2.0"
+val ScalaTestVersion        = "3.2.9"
+val ScalaCheckVersion       = "1.15.4"
+val ScalaTestPlusVersion    = "3.2.9.0"
 
 lazy val organizationSettings = Seq(
   organization := "com.vyunsergey",
@@ -23,13 +24,13 @@ lazy val organizationSettings = Seq(
 )
 
 lazy val assemblySettings = Seq(
-  assemblyJarName in assembly := s"${name.value}-${scalaVersion.value}_${version.value}.jar",
-  mainClass in assembly := Some("com.vyunsergey.filesystemwatcher.Main"),
-  test in assembly := {},
-  assemblyShadeRules in assembly := Seq(
+  assembly / assemblyJarName := s"${name.value}-${scalaVersion.value}_${version.value}.jar",
+  assembly / mainClass := Some("com.vyunsergey.filesystemwatcher.Main"),
+  assembly / test := {},
+  assembly / assemblyShadeRules := Seq(
     ShadeRule.rename("org.apache.http.**" -> "shaded.org.apache.http.@1").inAll
   ),
-  assemblyMergeStrategy in assembly := {
+  assembly / assemblyMergeStrategy := {
     case "application.conf" => MergeStrategy.concat
     case "reference.conf" => MergeStrategy.concat
     case PathList("META-INF", xs @ _*) => xs match {
@@ -75,12 +76,14 @@ lazy val commonLibraryDependencies = Seq(
   "org.typelevel"              %  s"kind-projector_$scalaVersion2_13" % KindProjectorVersion,
   // Zip4j
   "net.lingala.zip4j"          % "zip4j"                    % zip4jVersion,
+  // Avast Hashes
+  "com.avast.hashes"           %% "scala-hashes"            % hashesVersion,
   // ScalaTest
   "org.scalatest"              %% "scalatest"               % ScalaTestVersion % Test,
   // ScalaCheck
   "org.scalacheck"             %% "scalacheck"              % ScalaCheckVersion % Test,
   // ScalaTestPlus
-  "org.scalatestplus"          %% "scalacheck-1-14"         % ScalaTestPlusVersion % Test
+  "org.scalatestplus"          %% "scalacheck-1-15"         % ScalaTestPlusVersion % Test
 )
 
 lazy val scalaCompilerOptions = Seq(
