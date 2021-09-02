@@ -19,6 +19,7 @@ final case class Config(
                          productMask: String,
                          transferFileMask: String,
                          transferArchive: String,
+                         transferHash: String,
                          transferMarker: String,
                          csvMask: String,
                          zipMask: String,
@@ -143,6 +144,7 @@ object Config {
         r.addString("productMask", a.productMask, i) |+|
         r.addString("transferFileMask", a.transferFileMask, i) |+|
         r.addString("transferArchive", a.transferArchive, i) |+|
+        r.addString("transferHash", a.transferHash, i) |+|
         r.addString("transferMarker", a.transferMarker, i) |+|
         r.addString("csvMask", a.csvMask, i) |+|
         r.addString("zipMask", a.zipMask, i) |+|
@@ -155,6 +157,7 @@ object Config {
         s", productMask = '${a.productMask}'" +
         s", transferFileMask = '${a.transferFileMask}'" +
         s", transferArchive = '${a.transferArchive}'" +
+        s", transferHash = '${a.transferHash}'" +
         s", transferMarker = '${a.transferMarker}'" +
         s", csvMask = '${a.csvMask}'" +
         s", zipMask = '${a.zipMask}'" +

@@ -61,6 +61,13 @@ class SparkFileProcessor[F[_]: Monad: Logging: FileProcessor](context: Context) 
       }.map(_.filter(_._2).map(_._1))
       _ <- fileProcessor.deleteFiles(transferPath)
       _ <- fileProcessor.zipFiles(resDataFiles, transferPath.resolve(config.transferArchive))
+      _ <- info"Creating MD5 Hash Sum File in Path: '${transferPath.toAbsolutePath.toString}'"
+      _ <- fileProcessor.deleteFile(transferPath.resolve(config.transferHash))
+      hashOp <- fileProcessor.md5HashFile(transferPath.resolve(config.transferArchive))
+      _ <- hashOp match {
+        case None => error"Can`t create MD5 Hash Sum File in Path: '${transferPath.toAbsolutePath.toString}'"
+        case Some(hash) => fileProcessor.writeFile(hash)(transferPath.resolve(config.transferHash))
+      }
       _ <- info"Creating Marker Transfer File in Path: '${transferPath.toAbsolutePath.toString}'"
       _ <- fileProcessor.deleteFile(transferPath.resolve(config.transferMarker))
       _ <- fileProcessor.createFile(transferPath.resolve(config.transferMarker))
