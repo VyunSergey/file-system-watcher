@@ -260,7 +260,10 @@ class FileProcessor[F[_]: Monad: Logging] {
         for {
           subPathsReversed <- Try(JFiles.walk(path).sorted(Comparator.reverseOrder[Path]()).iterator().asScala.toList)
             .getOrElse(List.empty[Path]).pure[F]
-          _ <- subPathsReversed.traverse(deleteFile)
+          subFilesReversed <- subPathsReversed
+            .traverse(path => isFile(path).map(flag => (path, flag)))
+            .map(_.filter(_._2).map(_._1))
+          _ <- subFilesReversed.traverse(deleteFile)
         } yield ()
       } else ().pure[F]
       _ <- debug"Finish deleting all files from Path: '${path.toAbsolutePath.toString}'"
