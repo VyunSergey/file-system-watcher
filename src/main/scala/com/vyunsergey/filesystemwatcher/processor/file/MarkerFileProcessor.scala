@@ -35,7 +35,7 @@ class MarkerFileProcessor[F[_]: Monad: Logging: FileProcessor: DataFileProcessor
           _ <- debug"Creating Data File Match regex"
           dataFileMatchRegex <- fileProcessor.clearFileName(fileName).map(nm => (nm + ".*").r)
           dataFileMismatchRegex <- debug"Creating Data File Mismatch regex" as {
-            (".*\\." + fileName.split("\\.").last).r
+            (".*\\.(done|md5|" + fileName.split("\\.").last + ")").r
           }
           _ <- info"Finding Path of Data File in Path: '${path.getParent.toAbsolutePath.toString}'"
           subPathOp <- fileProcessor.find(
